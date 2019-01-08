@@ -16,13 +16,12 @@ parts:
     source: ftp://ftp.trilon.com/pub/xv/xv-3.10a.tar.gz
     plugin: dump
     override-build: |
-      #wget http://prdownloads.sourceforge.net/png-mng/xv-3.10a-jumbo-patches-20070520.tar.gz?download
-      #tar xf xv-3.10a-jumbo-patches-20070520.tar.gz?download
       (cd $SNAPCRAFT_STAGE/xv-3.10a; tar cf - *) | tar xf -
       patch -p1 < $SNAPCRAFT_STAGE/xv-3.10a-jumbo-fix-enh-patch-20070520.txt
+      patch -p1 < $SNAPCRAFT_STAGE/xv-3.10a-enhancements.20070520-20081216.diff
       patch -p0 < $SNAPCRAFT_STAGE/xv-libpng-1.5.patch
-      make
-      make install
+      make CCOPTS=-O3 JP2KINC=-I$SNAPCRAFT_STAGE/include JP2KLIB="-L$SNAPCRAFT_STAGE/lib -ljasper" PREFIX=
+      make install DESTDIR=$SNAPCRAFT_PART_INSTALL PREFIX=
     build-packages:
       - gcc
       - make
@@ -32,6 +31,16 @@ parts:
       - libtiff-dev
       - libpng-dev
       - zlib1g-dev
+    stage-packages:
+      - libjpeg-turbo8
+      - libx11-6
+      - libpng16-16
+      - libtiff5
+      - libjbig0
+    prime:
+      - bin/*
+      - share/man/man*/*
+      - usr/lib/*
     after:
       - jumbo
       - patches
@@ -45,7 +54,7 @@ parts:
       - -*
 
   patches:
-    source: snap/local
+    source: patch/
     plugin: dump
     prime:
       - -*
@@ -55,10 +64,16 @@ parts:
     source-type: git
     source-tag: version-2.0.14
     plugin: cmake
+    prime:
+      - -include
+      - -bin
+      - -share
+      - -lib/*.so
+      - -lib/pkgconfig
 
 apps:
   xv:
-    command: /usr/local/bin/xv
+    command: bin/xv
     #desktop:
     plugs:
       - home
