@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=xv
+Exec=xv
+Icon=xv.png
+Type=Application
+Categories=Graphics;RasterGraphics;Viewer;
