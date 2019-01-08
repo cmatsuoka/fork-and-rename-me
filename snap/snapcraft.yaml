@@ -9,7 +9,7 @@ description: |
   bitmap, Sun Rasterfile, Targa, RLE, RGB, BMP, PCX, FITS, and PM formats
   on all known types of X displays.
 
-confinement: devmode # use 'strict' once you have the right plugs and slots
+confinement: strict
 
 parts:
   xv:
@@ -78,3 +78,21 @@ apps:
     plugs:
       - home
       - x11
+  bggen:
+    command: bin/bggen
+    plugs:
+      - home
+      - x11
+  vdcomp:
+    command: bin/vdcomp
+    plugs:
+      - home
+  xcmap:
+    command: bin/xcmap
+    plugs:
+      - home
+      - x11
+  xvpictoppm:
+    command: bin/xvpictoppm
+    plugs:
+      - home
