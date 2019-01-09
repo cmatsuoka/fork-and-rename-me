@@ -4,10 +4,11 @@ grade: devel
 version: 3.10a+jumbo20070520+enh20081216
 summary: The classic image manipulation program
 description: |
-  xv is an interactive image manipulation program for the X Window System.
-  It can operate on images in the GIF, JPEG, TIFF, PBM, PGM, PPM, XPM, X11
-  bitmap, Sun Rasterfile, Targa, RLE, RGB, BMP, PCX, FITS, and PM formats
-  on all known types of X displays.
+  The ubiquitous and time-honored XV is the industry-leading program for
+  fast, no-nonsense image display in the X Window System. It can operate on
+  images in the JPEG, PNG, GIF, TIFF, PBM, PGM, PPM, XPM, X11 bitmap, Sun
+  Rasterfile, Targa, RLE, RGB, BMP, PCX, FITS, and PM formats on all known
+  types of X displays.
 
 confinement: strict
 
