@@ -1,5 +1,6 @@
 name: xv
 base: core18
+icon: xv.png
 grade: devel
 version: 3.10a+jumbo20070520+enh20081216
 summary: The classic image manipulation program
@@ -75,7 +76,7 @@ parts:
 apps:
   xv:
     command: bin/xv
-    #desktop:
+    desktop: xv.desktop
     plugs:
       - home
       - x11
