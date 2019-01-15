@@ -60,7 +60,7 @@ parts:
     source: patch/
     plugin: dump
     prime:
-      - -*
+      - xv.desktop
 
   jasper:
     source: https://github.com/mdadams/jasper
