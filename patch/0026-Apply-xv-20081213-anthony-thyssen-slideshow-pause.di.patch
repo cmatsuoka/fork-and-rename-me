@@ -1,0 +1,28 @@
+From 61a5d4f9dec087df60e63942a667abd88eb00773 Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Sun, 23 Apr 2017 09:36:06 -0700
+Subject: [PATCH 26/68] Apply xv-20081213-anthony-thyssen-slideshow-pause.dif. 
+ See #4.
+
+Press 'w' to pause a slide show started with the -wait N flag.
+---
+ xvevent.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/xvevent.c b/xvevent.c
+index 0fcc18d..ca75f5f 100644
+--- a/xvevent.c
++++ b/xvevent.c
+@@ -1916,6 +1916,9 @@ static void handleKeyEvent(event, donep, retvalp)
+       case 'H':    FakeButtonPress(&gbut[G_BHISTEQ]);  break;
+       case 'N':    FakeButtonPress(&gbut[G_BMAXCONT]); break;
+ 
++        /* wait pause/resume */
++      case 'w':    waitsec = -waitsec;                 break;
++
+       default:     break;
+       }
+     }
+-- 
+2.17.1
+

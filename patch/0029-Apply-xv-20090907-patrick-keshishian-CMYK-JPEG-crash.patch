@@ -1,0 +1,38 @@
+From 4264f830476b93046ac6eb871e1ddc7d9cf7b784 Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Sun, 23 Apr 2017 11:01:49 -0700
+Subject: [PATCH 29/68] Apply
+ xv-20090907-patrick-keshishian-CMYK-JPEG-crash-fix.patch.  See #4.
+
+The provided image file that's supposed to trigger this bug doesn't
+cause trouble on my machine.  Maybe it's a 32-bitness versus 64-bitness
+problem.
+---
+ xvjpeg.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/xvjpeg.c b/xvjpeg.c
+index b569811..f7b4c46 100644
+--- a/xvjpeg.c
++++ b/xvjpeg.c
+@@ -696,7 +696,7 @@ L2:
+         if ((cmy = *q++ - k) < 0) cmy = 0; *p++ = cmy; /* R */
+         if ((cmy = *q++ - k) < 0) cmy = 0; *p++ = cmy; /* G */
+         if ((cmy = *q++ - k) < 0) cmy = 0; *p++ = cmy; /* B */
+-      } while (++q <= pic_end);
++      } while (++q < pic_end);
+     }
+     else { /* assume normal data */
+       register byte *q = pic;
+@@ -707,7 +707,7 @@ L2:
+         if ((cmy = k - *q++) < 0) cmy = 0; *p++ = cmy; /* R */
+         if ((cmy = k - *q++) < 0) cmy = 0; *p++ = cmy; /* G */
+         if ((cmy = k - *q++) < 0) cmy = 0; *p++ = cmy; /* B */
+-      } while (++q <= pic_end);
++      } while (++q < pic_end);
+     }
+     pic = realloc(pic,p-pic); /* Release extra storage */
+   }
+-- 
+2.17.1
+

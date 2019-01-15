@@ -1,0 +1,57 @@
+From f9d46bd99584988df306f5b57e8f00d26967e3bd Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Wed, 3 May 2017 16:39:36 -0700
+Subject: [PATCH 51/68] Eliminate flicker
+
+This is from xv-michal-maruska-no-flicker-bkgd.patch.
+
+Hello, here's a patch for XV:
+
+Since the Image window is full of the image pixels, the window background
+is not meant to be seen.... but it can make flicker, be seen for an instant,
+when the window is exposed.
+
+More info at:         http://michal.ruska.dyndns.org/flicker.html
+---
+ xv.c | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/xv.c b/xv.c
+index 4a085e4..7079cac 100644
+--- a/xv.c
++++ b/xv.c
+@@ -1222,10 +1222,10 @@ static void useOtherVisual(vinfo, best)
+     XFlush(theDisp);
+     XSync(theDisp, False);
+ 
+-    xswa.background_pixel = 0;
++    xswa.background_pixmap  = None;
+     xswa.border_pixel     = 1;
+     xswa.colormap         = theCmap;
+-    xswamask = CWBackPixel | CWBorderPixel | CWColormap;
++    xswamask = CWBackPixmap | CWBorderPixel | CWColormap;
+ 
+     win = XCreateWindow(theDisp, rootW, 0, 0, 100, 100, 2, (int) dispDEEP,
+ 			InputOutput, theVisual, xswamask, &xswa);
+@@ -3951,7 +3951,7 @@ static void createMainWindow(geom, name)
+   hints.flags |= PSize | PMaxSize;
+ 
+   xswa.bit_gravity      = StaticGravity;
+-  xswa.background_pixel = bg;
++  xswa.background_pixmap  = None;
+   xswa.border_pixel     = fg;
+   xswa.colormap         = theCmap;
+ 
+@@ -3966,7 +3966,8 @@ static void createMainWindow(geom, name)
+      that windows, by default, have backing-store turned on, then the
+      image window will, too */
+ 
+-  xswamask = CWBackPixel | CWBorderPixel | CWColormap /* | CWBackingStore */;
++  /* CWBackPixel */
++  xswamask = CWBackPixmap | CWBorderPixel | CWColormap /* | CWBackingStore */;
+   if (!clearonload) xswamask |= CWBitGravity;
+ 
+   if (mainW) {
+-- 
+2.17.1
+

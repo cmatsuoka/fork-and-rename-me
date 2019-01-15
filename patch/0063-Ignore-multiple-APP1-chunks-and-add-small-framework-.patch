@@ -1,0 +1,117 @@
+From 5d6028e75eff5c3c6da41ecff12f3be266eaf05a Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Sat, 13 May 2017 17:08:45 -0700
+Subject: [PATCH 63/68] Ignore multiple APP1 chunks and add small framework to
+ report errors.
+
+This is from
+http://cvsweb.openbsd.org/cgi-bin/cvsweb/ports/graphics/xv/patches/patch-xv_h
+http://cvsweb.openbsd.org/cgi-bin/cvsweb/ports/graphics/xv/patches/patch-xvdir_c
+http://cvsweb.openbsd.org/cgi-bin/cvsweb/ports/graphics/xv/patches/patch-xvjpeg_c
+
+1) Fix problems with Nikon D7100 pictures, they don't create correct
+exif information (multiple APP1 chunks). xv reads them all, but libjpeg
+frowns about writing multiple APP1.
+
+2) A small framework was added to report errors from libjpeg.  This
+might be adaptable to other graphics formats.
+---
+ xv.h     |  3 ++-
+ xvdir.c  | 10 +++++++---
+ xvjpeg.c | 14 +++++++++-----
+ 3 files changed, 18 insertions(+), 9 deletions(-)
+
+diff --git a/xv.h b/xv.h
+index d14f9b4..11fbbfc 100644
+--- a/xv.h
++++ b/xv.h
+@@ -1744,7 +1744,8 @@ char *GetDirFullName       PARM((void));
+ void SetDirSaveMode        PARM((int, int));
+ int  Globify               PARM((char *));
+ FILE *OpenOutFile          PARM((const char *));
+-int  CloseOutFile          PARM((FILE *, const char *, int));
++int  CloseOutFileWhy       PARM((FILE *, const char *, int, const char *));
++#define CloseOutFile(fp, name, fail) CloseOutFileWhy((fp), (name), (fail), NULL)
+ 
+ byte *GenSavePic           PARM((int*, int*,int*, int*, int*,
+ 				 byte**, byte**, byte**));
+diff --git a/xvdir.c b/xvdir.c
+index a143a35..942e056 100644
+--- a/xvdir.c
++++ b/xvdir.c
+@@ -2333,18 +2333,22 @@ FILE *OpenOutFile(filename)
+ 
+ 
+ /***************************************/
+-int CloseOutFile(fp, filename, failed)
++int CloseOutFileWhy(fp, filename, failed, why)
+     FILE       *fp;
+     const char *filename;
+     int         failed;
++    const char *why;
+ {
+   char buf[64];
+ 
+   /* close output file, and if piping, deal... Returns '0' if everything OK */
+ 
+   if (failed) {    /* failure during format-specific output routine */
+-    char  str[512];
+-    sprintf(str,"Couldn't write file '%s'.", outFName);
++    char  str[2048];
++    if (why)
++        snprintf(str, 2048, "Couldn't write file '%s' (%s).", outFName, why);
++    else
++        snprintf(str, 2048, "Couldn't write file '%s'.", outFName);
+     ErrPopUp(str, "\nBummer!");
+     unlink(outFName);   /* couldn't properly write file:  delete it */
+     return 1;
+diff --git a/xvjpeg.c b/xvjpeg.c
+index a320520..1af7eab 100644
+--- a/xvjpeg.c
++++ b/xvjpeg.c
+@@ -314,7 +314,7 @@ static void doCmd(cmd)
+ }
+ 
+ 
+-
++char errbuffer[JMSG_LENGTH_MAX];
+ 
+ 
+ /*******************************************/
+@@ -418,7 +418,7 @@ static void writeJPEG()
+ 
+   if (pfree) free(inpix);
+ 
+-  if (CloseOutFile(fp, filename, rv) == 0) DirBox(0);
++  if (CloseOutFileWhy(fp, filename, rv, errbuffer) == 0) DirBox(0);
+   SetCursors(-1);
+ }
+ 
+@@ -444,7 +444,7 @@ METHODDEF void  xv_error_exit(cinfo)
+   my_error_ptr myerr;
+ 
+   myerr = (my_error_ptr) cinfo->err;
+-  (*cinfo->err->output_message)(cinfo);     /* display error message */
++  (*cinfo->err->format_message)(cinfo, errbuffer);     /* fmt error message */
+   longjmp(myerr->setjmp_buffer, 1);         /* return from error */
+ }
+ 
+@@ -852,9 +852,13 @@ METHODDEF boolean  xv_process_app1(cinfo)
+     exifInfo = (byte *) malloc((size_t) length);
+     exifInfoSize = 0;
+   }
+-  else exifInfo = (byte *) realloc(exifInfo, exifInfoSize + length);
++  else {
++    /* one APP1 data struct only, ignore extra stuff */
++    while (length-- > 0)
++      (void)j_getc(cinfo);
++  }
+   if (!exifInfo) FatalError("out of memory in xv_process_app1 (EXIF info)");
+-  
++
+   sp = exifInfo + exifInfoSize;
+   exifInfoSize += length;
+ 
+-- 
+2.17.1
+

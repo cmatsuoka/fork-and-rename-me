@@ -1,0 +1,4724 @@
+From c59166e7fa60630e7b4b9ba22f7fe93fea160d2f Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Mon, 8 May 2017 23:06:00 -0700
+Subject: [PATCH 60/68] Allow main and save/load window resizes, middle-click
+ pasting, geometry fix
+
+This is an extensive patch from Ross Combs.  The files in question are
+xv-20071013-ross-combs-resize-ppos-paste.msg
+xv-20071013-ross-combs-resize-ppos-paste.patch
+xv-20120505-ross-combs-middle-button-paste.mime
+xv-20120507-ross-combs-middle-button-paste.mime
+
+The major parts are:
+ * resize support
+ * middle-click pasting
+ * option to make window geometries pretend to be user-specified
+---
+ Imakefile    |    4 +-
+ Makefile     |    2 +-
+ README.jumbo |    8 +-
+ xv.c         |   57 +--
+ xv.h         |   50 ++-
+ xvbrowse.c   |   39 +-
+ xvbutt.c     |   95 +++--
+ xvctrl.c     |  420 ++++++++++++++-------
+ xvcut.c      |    5 +-
+ xvdial.c     |    2 +-
+ xvdir.c      | 1023 ++++++++++++++++++++++++++++++++++++--------------
+ xvevent.c    |  198 +++++++---
+ xvgam.c      |    2 +-
+ xvgraf.c     |    2 +-
+ xvinfo.c     |    2 +-
+ xvjp2k.c     |    4 +-
+ xvjpeg.c     |    2 +-
+ xvmgcsfx.c   |    2 +-
+ xvmisc.c     |   79 ++--
+ xvpcd.c      |   22 +-
+ xvpic2.c     |    2 +-
+ xvpng.c      |    2 +-
+ xvpopup.c    |  104 ++++-
+ xvps.c       |    2 +-
+ xvroot.c     |    2 +-
+ xvscrl.c     |   40 +-
+ xvselect.c   |  364 ++++++++++++++++++
+ xvtext.c     |   78 ++--
+ xvtiff.c     |    1 +
+ xvtiffwr.c   |    4 +-
+ xvvd.c       |    5 +
+ 31 files changed, 1939 insertions(+), 683 deletions(-)
+ create mode 100644 xvselect.c
+
+diff --git a/Imakefile b/Imakefile
+index dd7f6c1..8d26143 100644
+--- a/Imakefile
++++ b/Imakefile
+@@ -205,7 +205,7 @@ SRCS1 =	xv.c xvevent.c xvroot.c xvmisc.c xvimage.c xvcolor.c xvsmooth.c \
+ 	xvbrowse.c xvtext.c xvpcx.c xviff.c xvtarga.c xvxpm.c xvcut.c \
+ 	xvxwd.c xvfits.c xvpng.c xvzx.c xvwbmp.c xvpcd.c \
+ 	xvmag.c xvpic.c xvmaki.c xvpi.c xvpic2.c xvvd.c xvmgcsfx.c \
+-	xvml.c xvhips.c xvwebp.c
++	xvml.c xvhips.c xvwebp.c xvselect.c
+ 
+ OBJS1 =	xv.o xvevent.o xvroot.o xvmisc.o xvimage.o xvcolor.o xvsmooth.o \
+ 	xv24to8.o xvgif.o xvpm.o xvinfo.o xvctrl.o xvscrl.o xvalg.o xvg3.o \
+@@ -215,7 +215,7 @@ OBJS1 =	xv.o xvevent.o xvroot.o xvmisc.o xvimage.o xvcolor.o xvsmooth.o \
+ 	xvbrowse.o xvtext.o xvpcx.o xviff.o xvtarga.o xvxpm.o xvcut.o \
+ 	xvxwd.o xvfits.o xvpng.o xvzx.o xvwbmp.o xvpcd.o \
+ 	xvmag.o xvpic.o xvmaki.o xvpi.o xvpic2.o xvvd.o xvmgcsfx.o \
+-	xvml.o xvhips.o xvwebp.o
++	xvml.o xvhips.o xvwebp.o xvselect.o
+ 
+ SRCS2=	bggen.c
+ OBJS2=	bggen.o
+diff --git a/Makefile b/Makefile
+index f20daec..b49da98 100644
+--- a/Makefile
++++ b/Makefile
+@@ -372,7 +372,7 @@ OBJS = 	xv.o xvevent.o xvroot.o xvmisc.o xvimage.o xvcolor.o xvsmooth.o \
+ 	xvbrowse.o xvtext.o xvpcx.o xviff.o xvtarga.o xvxpm.o xvcut.o \
+ 	xvxwd.o xvfits.o xvpng.o xvzx.o xvwbmp.o xvpcd.o xvhips.o \
+ 	xvmag.o xvpic.o xvmaki.o xvpi.o xvpic2.o xvvd.o xvmgcsfx.o \
+-	xvml.o xvjp2k.o xvwebp.o xvg3.o
++	xvml.o xvjp2k.o xvwebp.o xvg3.o xvselect.o
+ 
+ MISC = README* INSTALL CHANGELOG IDEAS
+ 
+diff --git a/README.jumbo b/README.jumbo
+index 00b1c3e..ff506c7 100644
+--- a/README.jumbo
++++ b/README.jumbo
+@@ -370,7 +370,8 @@ not finished (and/or even started ;-) ):
+    unknown tags (or truncated/corrupted images)
+  - fix for minor .Z inefficiency in xv.c ("FIXME")
+  - fix for filename entry-field mouse/cursor deficiencies
+-   (positioning fixed 20070104 by Ross Combs; would like select/cut/paste, too)
++   (positioning fixed 20070104 by Ross Combs; would like
++   select/cut/copy/paste, too)
+  - fix for .ppm.gz "disk leak" [can't reproduce...already fixed?]
+    (maybe occurs only if filesystem is already nearly full?  bad .gz?)
+ 
+@@ -379,6 +380,11 @@ not finished (and/or even started ;-) ):
+  - MNG/JNG support
+  - SVG support
+ 
++ - tooltips for buttons with icons
++ - fix meta/alt/mod1 confusion in event handling and docs
++ - fix strange non-ICCCM positioning which causes windows to drift
++   when operations are performed and other strangeness
++
+ 
+ ChangeLog
+ ---------
+diff --git a/xv.c b/xv.c
+index 49563a8..b7fae99 100644
+--- a/xv.c
++++ b/xv.c
+@@ -333,42 +333,43 @@ int main(argc, argv)
+   conv24 = CONV24_SLOW;  /* use 'slow' algorithm by default */
+ 
+   defaspect = normaspect = 1.0;
+-  mainW = dirW = infoW = ctrlW = gamW = psW = (Window) NULL;
++  mainW = dirW = infoW = ctrlW = gamW = psW = (Window) None;
+   anyBrowUp = 0;
+   incrementalSearchTimeout = 30;
++  forcegeom = TRUE;
+ 
+ #ifdef HAVE_JPEG
+-  jpegW = (Window) NULL;  jpegUp = 0;
++  jpegW = (Window) None;  jpegUp = 0;
+ #endif
+ 
+ #ifdef HAVE_JP2K
+-  jp2kW = (Window) NULL;  jp2kUp = 0; 
++  jp2kW = (Window) None;  jp2kUp = 0; 
+ #endif
+ 
+ #ifdef HAVE_TIFF
+-  tiffW = (Window) NULL;  tiffUp = 0;
++  tiffW = (Window) None;  tiffUp = 0;
+ #endif
+ 
+ #ifdef HAVE_PNG
+-  pngW = (Window) NULL;  pngUp = 0;
++  pngW = (Window) None;  pngUp = 0;
+ #endif
+ 
+ #ifdef HAVE_WEBP
+-  webpW = (Window) NULL; webpUp = 0;
++  webpW = (Window) None; webpUp = 0;
+ #endif
+ 
+-  pcdW = (Window) NULL;  pcdUp = 0;
++  pcdW = (Window) None;  pcdUp = 0;
+ 
+ #ifdef HAVE_PIC2
+-  pic2W = (Window) NULL;  pic2Up = 0;
++  pic2W = (Window) None;  pic2Up = 0;
+ #endif
+ 
+ #ifdef HAVE_PCD
+-  pcdW = (Window) NULL;  pcdUp = 0;
++  pcdW = (Window) None;  pcdUp = 0;
+ #endif
+ 
+ #ifdef HAVE_MGCSFX
+-  mgcsfxW = (Window) NULL;  mgcsfxUp = 0;
++  mgcsfxW = (Window) None;  mgcsfxUp = 0;
+ #endif
+ 
+   imap = ctrlmap = gmap = browmap = cmtmap = 0;
+@@ -425,9 +426,9 @@ int main(argc, argv)
+   theScreen = DefaultScreen(theDisp);
+   theCmap   = DefaultColormap(theDisp, theScreen);
+   if (spec_window) {
+-	rootW = spec_window;
++    rootW = spec_window;
+   } else {
+-	rootW = RootWindow(theDisp,theScreen);
++    rootW = RootWindow(theDisp,theScreen);
+   }
+   theGC     = DefaultGC(theDisp,theScreen);
+   theVisual = DefaultVisual(theDisp,theScreen);
+@@ -591,7 +592,7 @@ int main(argc, argv)
+     if (XGetWindowProperty (theDisp, children[i], __SWM_VROOT, 0L, 1L,
+ 	  False, XA_WINDOW, &actual_type, &actual_format, &nitems,
+ 	  &bytesafter, (unsigned char **) &newRoot) == Success && newRoot) {
+-      vrootW = *(Window *)newRoot;
++      vrootW = *(Window *)newRoot; /* FIXME: alignment and type aliasing violation (use memcpy()) */
+       XGetWindowAttributes(theDisp, vrootW, &xwa);
+       maxWIDE = vrWIDE = xwa.width;  maxHIGH = vrHIGH = xwa.height;
+       dispDEEP = xwa.depth;
+@@ -941,8 +942,8 @@ int main(argc, argv)
+ 
+ 
+   /* create the directory window */
+-  CreateDirW(NULL);
+-  XSelectInput(theDisp, dirW, ExposureMask | ButtonPressMask | KeyPressMask);
++  CreateDirW();
++  XSelectInput(theDisp, dirW, ExposureMask | StructureNotifyMask | ButtonPressMask | KeyPressMask);
+   browseCB.val = browseMode;
+   savenormCB.val = savenorm;
+ 
+@@ -965,7 +966,7 @@ int main(argc, argv)
+   if (!novbrowse) {
+     MakeBrowCmap();
+     /* create the visual browser window */
+-    CreateBrowse(browgeom, fgstr, bgstr, histr, lostr);
++    CreateBrowse(browgeom, browgeom != DEFBROWGEOM, fgstr, bgstr, histr, lostr);
+ 
+     if (browmap) OpenBrowse();
+   }
+@@ -1254,8 +1255,8 @@ static void useOtherVisual(vinfo, best)
+ 
+ /*****************************************************/
+ static void parseResources(argc, argv)
+-     int argc;
+-     char **argv;
++  int argc;
++  char **argv;
+ {
+   int i, pm;
+ 
+@@ -1384,6 +1385,7 @@ static void parseResources(argc, argv)
+   if (rd_flag("nopicadjust"))    nopicadjust = def_int;
+ #endif
+   if (rd_flag("nopos"))          nopos       = def_int;
++  if (rd_flag("forcegeom]"))     forcegeom   = def_int;
+   if (rd_flag("noqcheck"))       noqcheck    = def_int;
+   if (rd_flag("nostat"))         nostat      = def_int;
+   if (rd_flag("ownCmap"))        owncmap     = def_int;
+@@ -1416,7 +1418,7 @@ static void parseResources(argc, argv)
+   if (rd_flag("vsMap"))          browmap     = def_int;
+   if (rd_flag("vsPerfect"))      browPerfect = def_int;
+   if (rd_str ("white"))          whitestr    = def_str;
+-  
++
+   /* Check for any command-bindings to the supported function keys */
+ #define TMPLEN 80
+   for (i=0; i<FSTRMAX; ++i) {
+@@ -1427,7 +1429,7 @@ static void parseResources(argc, argv)
+       fkeycmds[i] = def_str;
+     else
+       fkeycmds[i] = NULL;
+-  }  
++  }
+ #undef TMPLEN
+ }
+ 
+@@ -1480,7 +1482,7 @@ static void parseCmdLine(argc, argv)
+     else if (!argcmp(argv[i],"-4x3",    2,1,&auto4x3 ));   /* 4x3 */
+     else if (!argcmp(argv[i],"-8",      2,1,&force8  ));   /* force8 */
+     else if (!argcmp(argv[i],"-acrop",  3,1,&autocrop));   /* autocrop */
+-                                                          
++
+     else if (!argcmp(argv[i],"-aspect",3,0,&pm)) {         /* def. aspect */
+       int n,d;
+       if (++i<argc) {
+@@ -1698,6 +1700,7 @@ static void parseCmdLine(argc, argv)
+     else if (!argcmp(argv[i],"-nopicadjust", 4,1,&nopicadjust));/*nopicadjust*/
+ #endif
+     else if (!argcmp(argv[i],"-nopos",     4,1,&nopos));      /* nopos */
++    else if (!argcmp(argv[i],"-forcegeom", 6,1,&forcegeom));  /* forcegeom */
+     else if (!argcmp(argv[i],"-noqcheck",  4,1,&noqcheck));   /* noqcheck */
+     else if (!argcmp(argv[i],"-noresetroot",5,1,&resetroot)); /* reset root */
+     else if (!argcmp(argv[i],"-norm",      5,1,&autonorm));   /* norm */
+@@ -1798,7 +1801,7 @@ static void parseCmdLine(argc, argv)
+   /* build origlist[], a copy of namelist that remains unmodified, for
+      use with the 'autoDelete' option */
+   orignumnames = numnames;
+-  xvbcopy( (char *) namelist, (char *) origlist, sizeof(origlist));
++  xvbcopy((char *) namelist, (char *) origlist, sizeof(origlist));
+ }
+ 
+ 
+@@ -2003,6 +2006,7 @@ static void cmdSyntax(i)
+   printoption("[-/+nopicadjust]");
+ #endif
+   printoption("[-/+nopos]");
++  printoption("[-/+forcegeom]");
+   printoption("[-/+noqcheck]");
+   printoption("[-/+noresetroot]");
+   printoption("[-/+norm]");
+@@ -3426,6 +3430,11 @@ int UncompressFile(name, uncompname, filetype)
+   close(tmpfd);
+ #endif
+ 
++  /* FIXME: need to replace any ticks in filename (with the
++   * ugly sequence '\"'\"' because backslash won't work inside
++   * single quotes) before calling system().  Maybe one of the
++   * exec() variants would be better...
++   */
+ #ifndef VMS
+   if (filetype == RFT_COMPRESS)
+     sprintf(buf,"%s -c '%s' > '%s'", UNCOMPRESS, fname, uncompname);
+@@ -4486,7 +4495,7 @@ void HandleDispMode()
+ 
+     if (useroot && resetroot) ClearRoot();
+ 
+-    if (mainW == (Window) NULL || useroot) {  /* window not visible */
++    if (mainW == (Window) None || useroot) {  /* window not visible */
+       useroot = 0;
+ 
+       if (haveoldinfo) {             /* just remap mainW and resize it */
+@@ -4519,7 +4528,7 @@ void HandleDispMode()
+       }
+ 
+       else {                         /* first time.  need to create mainW */
+-	mainW = (Window) NULL;
++	mainW = (Window) None;
+ 	createMainWindow(maingeom, fnam);
+ 	XSelectInput(theDisp, mainW, ExposureMask | KeyPressMask
+ 		     | StructureNotifyMask | ButtonPressMask
+diff --git a/xv.h b/xv.h
+index b5b2324..d14f9b4 100644
+--- a/xv.h
++++ b/xv.h
+@@ -454,6 +454,7 @@
+ #  define HAVE_G3
+ #endif
+ 
++#define DBLCLICKTIME 400           /* double-click speed in milliseconds */
+ 
+ #define PROGNAME   "xv"            /* used in resource database */
+ 
+@@ -1246,6 +1247,9 @@ WHERE int            nomgcsfx;  /* True if we don't want to use MgcSfx */
+ 
+ #define FSTRMAX 12   /* Number of function keys to support. */
+ WHERE char          *fkeycmds[FSTRMAX]; /* command to run when F# is pressed */
++WHERE int            forcegeom; /* always pretend geometry is user-specified
++				   (breaks ICCCM but some wm would require
++				   manual placement otherwise) */
+ 
+ /* Std Cmap stuff */
+ WHERE byte           stdr[256], stdg[256], stdb[256];  /* std 3/3/2 cmap */
+@@ -1523,13 +1527,14 @@ WHERE int           mgcsfxUp;      /* is mgcsfxW mapped, or what? */
+ /* function declarations for externally-callable functions */
+ 
+ /****************************** XV.C ****************************/
++void  SendSelection        PARM((Atom, Window, Atom, Atom, Time, char const *));
+ int   ReadFileType         PARM((char *));
+ int   ReadPicFile          PARM((char *, int, PICINFO *, int));
+ int   UncompressFile       PARM((char *, char *, int));
+ void  KillPageFiles        PARM((char *, int));
+-#ifdef MACBINARY          
++#ifdef MACBINARY
+ int   RemoveMacbinary      PARM((char *, char *));
+-#endif                    
++#endif
+ 
+ void NewPicGetColors       PARM((int, int));
+ void FixAspect             PARM((int, int *, int *));
+@@ -1559,7 +1564,7 @@ void DoAlg                 PARM((int));
+ 
+ 
+ /*************************** XVBROWSE.C ************************/
+-void CreateBrowse          PARM((const char *, const char *, const char *,
++void CreateBrowse          PARM((const char *, int, const char *, const char *,
+ 				 const char *, const char *));
+ void OpenBrowse            PARM((void));
+ void HideBrowseWindows     PARM((void));
+@@ -1578,6 +1583,7 @@ void BRCreatedFile         PARM((char *));
+ void BTCreate              PARM((BUTT *, Window, int, int, u_int, u_int,
+ 				 const char *, u_long, u_long, u_long, u_long));
+ 
++void BTMove                PARM((BUTT *, int, int));
+ void BTSetActive           PARM((BUTT *, int));
+ void BTRedraw              PARM((BUTT *));
+ int  BTTrack               PARM((BUTT *));
+@@ -1598,6 +1604,7 @@ int    RBTrack             PARM((RBUTT *, int));
+ void   CBCreate            PARM((CBUTT *, Window, int, int, const char *,
+ 				 u_long, u_long, u_long, u_long));
+ 
++void   CBMove              PARM((CBUTT *, int, int));
+ void   CBRedraw            PARM((CBUTT *));
+ void   CBSetActive         PARM((CBUTT *, int));
+ int    CBClick             PARM((CBUTT *,int,int));
+@@ -1608,6 +1615,9 @@ void   MBCreate            PARM((MBUTT *, Window, int, int, u_int, u_int,
+ 				 const char *, const char **, int,
+ 				 u_long, u_long, u_long, u_long));
+ 
++void   MBChange            PARM((MBUTT *, int, int, unsigned int,
++				 unsigned int));
++
+ void   MBRedraw            PARM((MBUTT *));
+ void   MBSetActive         PARM((MBUTT *, int));
+ int    MBWhich             PARM((MBUTT *));
+@@ -1632,6 +1642,7 @@ void   ChangeCmapMode      PARM((int, int, int));
+ 
+ /**************************** XVCTRL.C **************************/
+ void   CreateCtrl          PARM((const char *));
++void   ResizeCtrl          PARM((int, int));
+ void   SetButtPix          PARM((BUTT *, Pixmap, int, int));
+ Pixmap MakePix1            PARM((Window, byte *, int, int));
+ 
+@@ -1646,6 +1657,7 @@ void LSCreate              PARM((LIST *, Window, int, int, int, int, int,
+ 				 char **, int, u_long, u_long, u_long, u_long,
+ 				 void (*)(int, SCRL *), int, int));
+ 
++void LSResize              PARM((LIST *lp, int w, int h, int nlines));
+ void LSRedraw              PARM((LIST *, int));
+ int  LSClick               PARM((LIST *, XButtonEvent *));
+ void LSChangeData          PARM((LIST *, char **, int));
+@@ -1704,10 +1716,13 @@ int  DTrack                PARM((DIAL *, int, int));
+ 
+ 
+ /**************************** XVDIR.C ***************************/
+-void CreateDirW            PARM((char *));
++void CreateDirW            PARM((void));
++void ResizeDirW            PARM((int, int));
+ void DirBox                PARM((int));
+-void RedrawDirW            PARM((int,int,int,int));
+-int  ClickDirW             PARM((int, int));
++void RedrawDirW            PARM((int, int, int, int));
++int  ClickDirW             PARM((int, int, int));
++int  DoubleClickDirW       PARM((int, int, int));
++void PasteIntoBox          PARM((char const *));
+ void LoadCurrentDirectory  PARM((void));
+ void GetDirPath            PARM((char *));
+ int  DirCheckCD            PARM((void));
+@@ -1715,6 +1730,12 @@ void RedrawDDirW           PARM((void));
+ void RedrawDNamW           PARM((void));
+ void SelectDir             PARM((int));
+ void TrackDDirW            PARM((int,int));
++void SelectAllDirW         PARM((void));
++void CutDirW               PARM((void));
++void CopyDirW              PARM((void));
++void PasteDirW             PARM((void));
++void ClearDirW             PARM((void));
++void InactivateDirW        PARM((void));
+ int  DirKey                PARM((int));
+ int  DoSave                PARM((void));
+ void SetDirFName           PARM((const char *));
+@@ -1742,7 +1763,7 @@ int  OpenOutFileDesc       PARM((char *));
+ int  EventLoop             PARM((void));
+ int  HandleEvent           PARM((XEvent *, int *));
+ 
+-void NewCutBuffer          PARM((char *));
++void NewCutBuffer          PARM((char const *));
+ void DrawWindow            PARM((int,int,int,int));
+ void WResize               PARM((int, int));
+ void WRotate               PARM((void));
+@@ -1852,6 +1873,9 @@ void  SetISTR();
+ 
+ /*************************** XVMISC.C ***************************/
+ void StoreDeleteWindowProp PARM((Window));
++Window CreateFlexWindow    PARM((const char *, const char *, const char *,
++				int, int, unsigned long, unsigned long,
++				int, int, int));
+ Window CreateWindow        PARM((const char *, const char *, const char *,
+ 				 int, int, u_long, u_long, int));
+ void DrawString            PARM((Window, int, int, const char *));
+@@ -1895,6 +1919,10 @@ void Timer                 PARM((int));
+ 
+ 
+ /*************************** XVPOPUP.C ***************************/
++void  SetMinSizeWindow     PARM((Window win, int w, int h));
++void  SetMaxSizeWindow     PARM((Window win, int w, int h));
++void  SetSizeIncWindow     PARM((Window win, int dx, int dy));
++void  CenterMapFlexWindow  PARM((Window, int, int, int, int, int));
+ void  CenterMapWindow      PARM((Window, int, int, int, int));
+ int   PopUp                PARM((const char *, const char **, int));
+ void  ErrPopUp             PARM((const char *, const char *));
+@@ -2122,6 +2150,14 @@ int   LoadPS               PARM((char *, PICINFO *, int));
+ /**************************** XVRLE.C ***************************/
+ int LoadRLE                PARM((char *, PICINFO *));
+ 
++/**************************** XVSELECT.C ***************************/
++char *GetClipboardText     PARM((void));
++char *GetPrimaryText       PARM((void));
++int SetClipboardText       PARM((Window, char const *, int));
++int SetPrimaryText         PARM((Window, char const *, int));
++char const *TextOfSelection PARM((Atom));
++int ReleaseSelection       PARM((Atom));
++
+ /**************************** XVSUNRAS.C ***************************/
+ int LoadSunRas             PARM((char *, PICINFO *));
+ int WriteSunRas            PARM((FILE *, byte *, int, int, int, byte *,
+diff --git a/xvbrowse.c b/xvbrowse.c
+index ab0224c..af30c6d 100644
+--- a/xvbrowse.c
++++ b/xvbrowse.c
+@@ -169,8 +169,6 @@ typedef unsigned int mode_t;  /* file mode bits */
+ #define ISPACE_TTOP 4                 /* dist btwn bot of icon and title */
+ #define ISPACE_HIGH (ISIZE_HIGH+ISPACE_TOP+ISPACE_TTOP+16+4)
+ 
+-#define DBLCLICKTIME 300  /* milliseconds */
+-
+ #define COUNT(x) (sizeof (x) / sizeof (x)[0])
+ 
+ /* button/menu indices */
+@@ -207,6 +205,10 @@ typedef unsigned int mode_t;  /* file mode bits */
+ #define DEF_BROWHIGH  (ISPACE_HIGH * INUM_HIGH + BUTTH * 2 + 16 + 28)
+ /* last number is a fudge--e.g., extra spaces, borders, etc. -----^  */
+ 
++#define MIN_BROWWIDE  (325 + 96)
++#define MIN_BROWHIGH  180
++
++
+ static const char *showHstr = "Show hidden files";
+ static const char *hideHstr = "Hide 'hidden' files";
+ 
+@@ -386,12 +388,12 @@ static void clipChanges      PARM((BROWINFO *));
+ 
+ 
+ /***************************************************************/
+-void CreateBrowse(geom, fgstr, bgstr, histr, lostr)
+-     const char *geom;
+-     const char *fgstr, *bgstr, *histr, *lostr;
++void CreateBrowse(geom, userspec, fgstr, bgstr, histr, lostr)
++    const char *geom;
++    const char *fgstr, *bgstr, *histr, *lostr;
++    int userspec;
+ {
+   int                   i;
+-  XSizeHints            hints;
+   XSetWindowAttributes  xswa;
+   BROWINFO             *br;
+   XColor                ecdef, cursfg, cursbg;
+@@ -400,7 +402,10 @@ void CreateBrowse(geom, fgstr, bgstr, histr, lostr)
+   unsigned int          uw, uh;
+   char                  wgeom[64];
+ 
+-  if (!geom) geom = "";
++  if (!geom) {
++    geom = "";
++    userspec = FALSE;
++  }
+ 
+   /* map color spec strings into browCmap, if we're in browPerfect mode */
+   if (browPerfect && browCmap) {
+@@ -441,7 +446,7 @@ void CreateBrowse(geom, fgstr, bgstr, histr, lostr)
+ 
+   /* creates *all* schnauzer windows at once */
+ 
+-  for (i=0; i<MAXBRWIN; i++) binfo[i].win = (Window) NULL;
++  for (i=0; i<MAXBRWIN; i++) binfo[i].win = (Window) None;
+ 
+   for (i=0; i<MAXBRWIN; i++) {
+     char wname[64];
+@@ -470,9 +475,11 @@ void CreateBrowse(geom, fgstr, bgstr, histr, lostr)
+     if (i) sprintf(wname, "xv visual schnauzer (%d)", i);
+       else sprintf(wname, "xv visual schnauzer");
+ 
+-    br->win = CreateWindow(wname, "XVschnauze", wgeom,
+-			   DEF_BROWWIDE, DEF_BROWHIGH, browfg, browbg, 1);
++    br->win = CreateFlexWindow(wname, "XVschnauze", wgeom,
++                              DEF_BROWWIDE, DEF_BROWHIGH, browfg, browbg,
++                              TRUE, FALSE, userspec);
+     if (!br->win) FatalError("can't create schnauzer window!");
++    SetMinSizeWindow(br->win, MIN_BROWWIDE, MIN_BROWHIGH);
+ 
+     haveWindows = 1;
+     br->vis = br->wasvis = 0;
+@@ -488,20 +495,12 @@ void CreateBrowse(geom, fgstr, bgstr, histr, lostr)
+     /* note: everything is sized and positioned in ResizeBrowse() */
+ 
+     br->iconW = XCreateSimpleWindow(theDisp, br->win, 1,1, 100,100,
+-				     1,browfg,browbg);
++				   1, browfg, browbg);
+     if (!br->iconW) FatalError("can't create schnauzer icon window!");
+ 
+-    SCCreate(&(br->scrl), br->win, 0,0, 1,100, 0,0,0,0,
++    SCCreate(&br->scrl, br->win, 0,0, 1,100, 0,0,0,0,
+ 	     browfg, browbg, browhi, browlo, drawIconWin);
+ 
+-
+-    if (XGetNormalHints(theDisp, br->win, &hints)) {
+-      hints.min_width  = 325 + 96;
+-       hints.min_height = 180;
+-      hints.flags |= PMinSize;
+-      XSetNormalHints(theDisp, br->win, &hints);
+-    }
+-
+ #ifdef BACKING_STORE
+     xswa.backing_store = WhenMapped;
+     XChangeWindowAttributes(theDisp, br->iconW, CWBackingStore, &xswa);
+diff --git a/xvbutt.c b/xvbutt.c
+index 4b0b1e6..525a403 100644
+--- a/xvbutt.c
++++ b/xvbutt.c
+@@ -49,7 +49,7 @@
+ #include "bits/mb_chk"
+ 
+ 
+-static Pixmap cboard50 = (Pixmap) NULL;   /* 50% gray checkerboard */
++static Pixmap cboard50 = (Pixmap) None;   /* 50% gray checkerboard */
+ 
+ 
+ static int    rbpixmade = 0;
+@@ -72,12 +72,12 @@ static void drawCB     PARM((CBUTT *, int));
+ 
+ /**********************************************/
+ void BTCreate(bp,win,x,y,w,h,str,fg,bg,hi,lo)
+-     BUTT         *bp;
+-     Window        win;
+-     int           x,y;
+-     unsigned int  w,h;
+-     const char   *str;
+-     unsigned long fg,bg,hi,lo;
++    BUTT         *bp;
++    Window        win;
++    int           x,y;
++    unsigned int  w,h;
++    const char   *str;
++    unsigned long fg,bg,hi,lo;
+ {
+   bp->win = win;
+   bp->x = x;  bp->y = y;  bp->w = w;  bp->h = h;
+@@ -98,11 +98,21 @@ void BTCreate(bp,win,x,y,w,h,str,fg,bg,hi,lo)
+ }
+ 
+ 
++/**********************************************/
++void BTMove(bp, x, y)
++    BUTT *bp;
++    int   x,y;
++{
++  bp->x = x;
++  bp->y = y;
++}
++
+ 
+ /**********************************************/
+-void BTSetActive(bp,act)
+-BUTT         *bp;
+-int           act;
++
++void BTSetActive(bp, act)
++    BUTT *bp;
++    int   act;
+ {
+   if (bp->active != act) {
+     bp->active = act;
+@@ -114,7 +124,7 @@ int           act;
+ 
+ /**********************************************/
+ void BTRedraw(bp)
+-BUTT *bp;
++    BUTT *bp;
+ {
+   int          x,y,r,x1,y1;
+   unsigned int w,h;
+@@ -668,11 +678,11 @@ int RBTrack(rblist, n)
+ 
+ /***********************************************/
+ void CBCreate(cb, win, x,y, str, fg, bg, hi, lo)
+-      CBUTT        *cb;
+-      Window        win;
+-      int           x,y;
+-      const char   *str;
+-      unsigned long fg,bg,hi,lo;
++    CBUTT        *cb;
++    Window        win;
++    int           x,y;
++    const char   *str;
++    unsigned long fg,bg,hi,lo;
+ {
+   /* fill in the fields of the structure */
+   cb->win      = win;
+@@ -699,6 +709,14 @@ void CBCreate(cb, win, x,y, str, fg, bg, hi, lo)
+ }
+ 
+ 
++void CBMove(cb, x, y)
++    CBUTT *cb;
++    int    x, y;
++{
++  cb->x = x;
++  cb->y = y;
++}
++
+ 
+ 
+ /***********************************************/
+@@ -838,14 +856,14 @@ int lit;
+ 
+ /***********************************************/
+ void MBCreate(mb, win, x, y, w, h, title, list, nlist, fg, bg, hi, lo)
+-     MBUTT        *mb;
+-     Window        win;
+-     int           x,y;
+-     unsigned int  w,h;
+-     const char   *title;
+-     const char  **list;
+-     int           nlist;
+-     unsigned long fg,bg,hi,lo;
++    MBUTT        *mb;
++    Window        win;
++    int           x,y;
++    unsigned int  w,h;
++    const char   *title;
++    const char  **list;
++    int           nlist;
++    unsigned long fg,bg,hi,lo;
+ {
+   XSetWindowAttributes xswa;
+   unsigned long        xswamask;
+@@ -874,7 +892,7 @@ void MBCreate(mb, win, x, y, w, h, title, list, nlist, fg, bg, hi, lo)
+   mb->hi       = hi;
+   mb->lo       = lo;
+ 
+-  mb->pix      = (Pixmap) NULL;
++  mb->pix      = (Pixmap) None;
+   mb->pw = mb->ph = 0;
+ 
+   for (i=0; i<MAXMBLEN; i++) {
+@@ -899,11 +917,22 @@ void MBCreate(mb, win, x, y, w, h, title, list, nlist, fg, bg, hi, lo)
+ }
+ 
+ 
++void MBChange(mb, x, y, w, h)
++    MBUTT        *mb;
++    int           x, y;
++    unsigned int  w, h;
++{
++  mb->x = x;
++  mb->y = y;
++  mb->w = w;
++  mb->h = h;
++  XMoveResizeWindow(theDisp, mb->mwin, x, y, w, h);
++}
+ 
+ 
+ /***********************************************/
+ void MBRedraw(mb)
+-     MBUTT *mb;
++    MBUTT *mb;
+ {
+   /* draws a menu button in it's normal state.  (When it's actively being
+      used (to select an item), all drawing is handled in MBTrack) */
+@@ -983,8 +1012,8 @@ void MBRedraw(mb)
+ 
+ /**********************************************/
+ void MBSetActive(mb,act)
+-     MBUTT *mb;
+-     int    act;
++    MBUTT *mb;
++    int    act;
+ {
+   if (mb->active != act) {
+     mb->active = act;
+@@ -995,7 +1024,7 @@ void MBSetActive(mb,act)
+ 
+ /**********************************************/
+ int MBWhich(mb)
+-     MBUTT *mb;
++    MBUTT *mb;
+ {
+   /* returns index of first checked selection, or '-1' if nothing selected */
+ 
+@@ -1012,8 +1041,8 @@ int MBWhich(mb)
+ 
+ /**********************************************/
+ void MBSelect(mb, n)
+-     MBUTT *mb;
+-     int    n;
++    MBUTT *mb;
++    int    n;
+ {
+   /* makes entry #n the selected entry (ie, the only one with a check mark)
+      Does all redrawing.  Does nothing if entry #n already selected.
+@@ -1045,7 +1074,7 @@ int    mx,my;
+ 
+ /***********************************************/
+ int MBTrack(mb)
+-     MBUTT *mb;
++    MBUTT *mb;
+ {
+   Window       rW, cW, win;
+   int          i, x, y, rx, ry, extratop, hascheck;
+@@ -1060,7 +1089,7 @@ int MBTrack(mb)
+ 
+   if (!mb->active || !mb->nlist) return -1;
+ 
+-  extratop = (mb->title) ? LINEHIGH+3 : 1-SPACING; /*add extra line for title*/
++  extratop = (mb->title) ? LINEHIGH+3 : 1-SPACING; /* add extra line for title */
+ 
+   mtabwide = 0;
+ 
+diff --git a/xvctrl.c b/xvctrl.c
+index f1f87db..0751e0b 100644
+--- a/xvctrl.c
++++ b/xvctrl.c
+@@ -54,23 +54,26 @@
+ #  include "bits/icon"
+ #endif
+ 
+-#define CTRLWIDE 440               /* (fixed) size of control window */
+-#define CTRLHIGH 348 /* 379 */
+-
+-#define DBLCLKTIME 500             /* double-click speed in milliseconds */
++#define DEF_CTRLWIDE 440           /* initial size of control window */
++#define DEF_CTRLHIGH 348
++#define MIN_CTRLWIDE 440
++#define MIN_CTRLHIGH 332
+ 
+ #define INACTIVE(lptr, item) ((lptr)->filetypes && (lptr)->dirsonly && \
+ 			      (item) >= 0 && (item) < (lptr)->nstr && \
+ 			      (lptr)->str[(item)][0] != C_DIR && \
+ 			      (lptr)->str[(item)][0] != C_LNK)
+ 
+-#define NLINES  11                 /* # of lines in list control (keep odd) */
+-
+ #define BUTTW   71                 /* keep odd for 'half' buttons to work   */
+ #define BUTTH   24
+ #define SBUTTH  21
+ 
+-static int    ptop;                /* y-coord of top of button area in ctrlW */
++#define MBWIDTH 112                /* dimensions for menu buttons */
++#define MBHEIGHT 19
++
++
++static int ctrl_h;                 /* current height of control window */
++static int ptop;                   /* y-coord of top of button area in ctrlW */
+ 
+ static Pixmap fifoPix, chrPix, dirPix, blkPix, lnkPix, sockPix, exePix, regPix;
+ static Pixmap rotlPix, rotrPix, fliphPix, flipvPix, p10Pix, m10Pix;
+@@ -154,24 +157,176 @@ static const char *windowMList[] = { "Visual Schnauzer\t^v",
+ 
+ 
+ 
+-static void drawSel      PARM((LIST *, int));
+-static void RedrawNList  PARM((int, SCRL *));
+-static void ls3d         PARM((LIST *));
++static int CtrlWide            PARM((void));
++static int CtrlHigh            PARM((void));
++static int roomForLines        PARM((int height));
++static void arrangeButtons     PARM((void));
++static void arrangeMenuButtons PARM((void));
++static void drawSel            PARM((LIST *, int));
++static void RedrawNList        PARM((int, SCRL *));
++static void ls3d               PARM((LIST *));
+ 
+ 
+ /***************************************************/
+-void CreateCtrl(geom)
+-     const char *geom;
++static int CtrlWide()
++{
++  return nList.w + BUTTW + 18;
++}
++
++
++/***************************************************/
++static int CtrlHigh()
++{
++  return ctrl_h;
++}
++
++
++/***************************************************/
++static int roomForLines(height)
++    int height;
++{
++  int num;
++
++  num = (height - 172)/LINEHIGH;
++  if (num < 1)
++    num = 1;
++  if (num > MAXNAMES)
++    num = MAXNAMES;
++
++  return num;
++}
++
++
++/***************************************************/
++static void arrangeButtons()
++
+ {
+-  int listh, topskip;
++  int topskip;
+   double skip;
++
++  /* position right-side buttons */
++
++  topskip = nList.y;
++  skip = ((double) (nList.h - (CHIGH+5))) / 6.0;
++  if (skip > SBUTTH+8) {
++    skip = SBUTTH + 7;
++    topskip = nList.y + (nList.h - (6*skip + (CHIGH+5))) / 2;
++  }
++
++#define R_BX(N) (CtrlWide() + (N) - BUTTW - 1 - 5)
++#define R_BY(N) (topskip + (int)((N)*skip))
++
++  BTMove(&but[BNEXT],   R_BX(0), R_BY(0));
++  BTMove(&but[BPREV],   R_BX(0), R_BY(1));
++  BTMove(&but[BLOAD],   R_BX(0), R_BY(2));
++  BTMove(&but[BSAVE],   R_BX(0), R_BY(3));
++  BTMove(&but[BPRINT],  R_BX(0), R_BY(4));
++  BTMove(&but[BDELETE], R_BX(0), R_BY(5));
++
++#undef R_BY
++#undef R_BX
++
++  /* position bottom buttons (6x2 array) */
++
++#define BXSPACE (BUTTW/2+1)
++#define BYSPACE (BUTTH+1)
++
++#define B_BXLFT ((CtrlWide() - (BXSPACE*12))/2)
++#define B_BX(N) (B_BXLFT + BXSPACE*(N))
++#define B_BYTOP (CtrlHigh() + 5 - (2*BYSPACE + 5 + 4))
++#define B_BY(N) (B_BYTOP + BYSPACE*(N))
++
++  ptop = B_BYTOP - 5; /* FIXME: this should not be a global */
++
++  butrect.x = B_BX(0)-1;  butrect.y = B_BY(0)-1;
++  butrect.width = 12*BXSPACE + 1;
++  butrect.height = 2*BYSPACE + 1;
++
++  BTMove(&but[BCOPY],   B_BX( 0), B_BY(0));
++  BTMove(&but[BCUT],    B_BX( 1), B_BY(0));
++  BTMove(&but[BPASTE],  B_BX( 2), B_BY(0));
++  BTMove(&but[BCLEAR],  B_BX( 3), B_BY(0));
++  BTMove(&but[BDN10],   B_BX( 4), B_BY(0));
++  BTMove(&but[BUP10],   B_BX( 5), B_BY(0));
++  BTMove(&but[BROTL],   B_BX( 6), B_BY(0));
++  BTMove(&but[BROTR],   B_BX( 7), B_BY(0));
++  BTMove(&but[BFLIPH],  B_BX( 8), B_BY(0));
++  BTMove(&but[BFLIPV],  B_BX( 9), B_BY(0));
++  BTMove(&but[BGRAB],   B_BX(10), B_BY(0));
++
++  BTMove(&but[BPAD],    B_BX( 0), B_BY(1));
++  BTMove(&but[BANNOT],  B_BX( 1), B_BY(1));
++
++  BTMove(&but[BCROP],   B_BX( 2), B_BY(1));
++  BTMove(&but[BUNCROP], B_BX( 4), B_BY(1));
++  BTMove(&but[BACROP],  B_BX( 6), B_BY(1));
++  BTMove(&but[BABOUT],  B_BX( 8), B_BY(1));
++  BTMove(&but[BQUIT],   B_BX(10), B_BY(1));
++
++#undef B_BY
++#undef B_BYTOP
++#undef B_BX
++#undef B_BXLFT
++
++#undef BYSPACE
++#undef BXSPACE
++}
++
++
++static void arrangeMenuButtons()
++{
++#define T_BXLFT (CtrlWide() - 6 - (MBWIDTH+2)*3)
++#define T_BX(N) (T_BXLFT + (MBWIDTH+2)*(N))
++#define T_BYTOP (5)
++#define T_BY(N) (T_BYTOP + (MBHEIGHT+2)*(N))
++
++  MBChange(&dispMB,   T_BX(0),T_BY(0), MBWIDTH,MBHEIGHT);
++  MBChange(&conv24MB, T_BX(1),T_BY(0), MBWIDTH,MBHEIGHT);
++  MBChange(&algMB,    T_BX(2),T_BY(0), MBWIDTH,MBHEIGHT);
++
++  MBChange(&rootMB,   T_BX(0),T_BY(1), MBWIDTH,MBHEIGHT);
++  MBChange(&windowMB, T_BX(1),T_BY(1), MBWIDTH,MBHEIGHT);
++  MBChange(&sizeMB,   T_BX(2),T_BY(1), MBWIDTH,MBHEIGHT);
++
++#undef T_BY
++#undef T_BYTOP
++#undef T_BX
++#undef T_BXLFT
++}
++
++
++/***************************************************/
++void ResizeCtrl(w, h)
++    int w, h;
++{
++  int nlines;
++
++  ctrl_h = h;
++
++  nlines = roomForLines(h);
++  LSResize(&nList, (w-BUTTW-18), LINEHIGH*nlines, nlines);
++  arrangeButtons();
++  arrangeMenuButtons();
++}
++
++
++/***************************************************/
++void CreateCtrl(geom)
++    const char *geom;
++{
++  int nlines;
++
+   XSetWindowAttributes xswa;
+   Pixmap oicon1Pix, oicon2Pix;
+ 
+-  ctrlW = CreateWindow("xv controls", "XVcontrols", geom,
+-		       CTRLWIDE, CTRLHIGH, infofg, infobg, 0);
++  ctrl_h = DEF_CTRLHIGH;
++  ctrlW = CreateFlexWindow("xv controls", "XVcontrols", geom,
++		  DEF_CTRLWIDE, DEF_CTRLHIGH, infofg, infobg,
++		  FALSE, FALSE, FALSE);
+   if (!ctrlW) FatalError("can't create controls window!");
+ 
++  SetMinSizeWindow(ctrlW, MIN_CTRLWIDE, MIN_CTRLHIGH);
++
+ #ifdef BACKING_STORE
+   xswa.backing_store = WhenMapped;
+   XChangeWindowAttributes(theDisp, ctrlW, CWBackingStore, &xswa);
+@@ -231,90 +386,58 @@ void CreateCtrl(geom)
+   XFreePixmap(theDisp, oicon2Pix);
+ 
+ 
+-
+   if (ctrlColor) XSetWindowBackground(theDisp, ctrlW, locol);
+             else XSetWindowBackgroundPixmap(theDisp, ctrlW, grayTile);
+ 
+-  listh = LINEHIGH * NLINES;
++  nlines = roomForLines(ctrl_h);
+ 
+-  LSCreate(&nList, ctrlW, 5, 52, (CTRLWIDE-BUTTW-18),
+-	   LINEHIGH*NLINES, NLINES, dispnames, numnames,
+-	   infofg, infobg, hicol, locol, RedrawNList, 0, 0);
++  LSCreate(&nList, ctrlW, 5, 52, (DEF_CTRLWIDE-BUTTW-18),
++          LINEHIGH*nlines, nlines, dispnames, numnames,
++          infofg, infobg, hicol, locol, RedrawNList, FALSE, FALSE);
+   nList.selected = 0;  /* default to first name selected */
+ 
+ 
+ #define BCLS infofg, infobg, hicol, locol
+ 
+-  /* expressions for positioning right-side buttons */
+-
+-  topskip = nList.y;
+-  skip =  ((double) (nList.h - (CHIGH+5))) / 6.0;
+-  if (skip > SBUTTH+8) {
+-    skip = SBUTTH + 7;
+-    topskip = nList.y + (nList.h - (6*skip + (CHIGH+5))) / 2;
+-  }
+-
+-#define R_BW1 BUTTW
+-#define R_BX0 (CTRLWIDE - R_BW1 - 1 - 5)
+-#define R_BY0 (topskip)
+-#define R_BY1 (topskip + (int)(1*skip))
+-#define R_BY2 (topskip + (int)(2*skip))
+-#define R_BY3 (topskip + (int)(3*skip))
+-#define R_BY4 (topskip + (int)(4*skip))
+-#define R_BY5 (topskip + (int)(5*skip))
+-
+-  BTCreate(&but[BNEXT],    ctrlW, R_BX0, R_BY0, R_BW1, SBUTTH, "Next",   BCLS);
+-  BTCreate(&but[BPREV],    ctrlW, R_BX0, R_BY1, R_BW1, SBUTTH, "Prev",   BCLS);
+-  BTCreate(&but[BLOAD],    ctrlW, R_BX0, R_BY2, R_BW1, SBUTTH, "Load",   BCLS);
+-  BTCreate(&but[BSAVE],    ctrlW, R_BX0, R_BY3, R_BW1, SBUTTH, "Save",   BCLS);
+-  BTCreate(&but[BPRINT],   ctrlW, R_BX0, R_BY4, R_BW1, SBUTTH, "Print",  BCLS);
+-  BTCreate(&but[BDELETE],  ctrlW, R_BX0, R_BY5, R_BW1, SBUTTH, "Delete", BCLS);
++  /* create top button */
+ 
++  BTCreate(&but[BXV], ctrlW, 5, 5, 100, (u_int) nList.y - 5 - 2 - 5, "", BCLS);
+ 
+-  /* expressions for positioning bottom buttons (6x2 array) */
++  /* create right-side buttons */
+ 
+-#define BXSPACE (BUTTW+1)
+-#define BYSPACE (BUTTH+1)
+-
+-  ptop = CTRLHIGH - (2*BYSPACE + 5 + 4);
++  BTCreate(&but[BNEXT],    ctrlW, 0, 0, BUTTW, SBUTTH, "Next",   BCLS);
++  BTCreate(&but[BPREV],    ctrlW, 0, 0, BUTTW, SBUTTH, "Prev",   BCLS);
++  BTCreate(&but[BLOAD],    ctrlW, 0, 0, BUTTW, SBUTTH, "Load",   BCLS);
++  BTCreate(&but[BSAVE],    ctrlW, 0, 0, BUTTW, SBUTTH, "Save",   BCLS);
++  BTCreate(&but[BPRINT],   ctrlW, 0, 0, BUTTW, SBUTTH, "Print",  BCLS);
++  BTCreate(&but[BDELETE],  ctrlW, 0, 0, BUTTW, SBUTTH, "Delete", BCLS);
+ 
+-#define BX0 ((CTRLWIDE - (BXSPACE*6))/2)
+-#define BX1 (BX0 + BXSPACE)
+-#define BX2 (BX0 + BXSPACE*2)
+-#define BX3 (BX0 + BXSPACE*3)
+-#define BX4 (BX0 + BXSPACE*4)
+-#define BX5 (BX0 + BXSPACE*5)
+-#define BY0 (ptop+5)
+-#define BY1 (BY0 + BYSPACE)
++  /* create bottom buttons */
+ 
+-  butrect.x = BX0-1;  butrect.y = BY0-1;
+-  butrect.width = 6*BXSPACE + 1;
+-  butrect.height = 2*BYSPACE + 1;
++  /* first row */
+ 
+-  BTCreate(&but[BCOPY],  ctrlW,BX0,            BY0,BUTTW/2,BUTTH, "",    BCLS);
+-  BTCreate(&but[BCUT],   ctrlW,BX0+BUTTW/2 + 1,BY0,BUTTW/2,BUTTH, "",    BCLS);
+-  BTCreate(&but[BPASTE], ctrlW,BX1,            BY0,BUTTW/2,BUTTH, "",    BCLS);
+-  BTCreate(&but[BCLEAR], ctrlW,BX1+BUTTW/2 + 1,BY0,BUTTW/2,BUTTH, "",    BCLS);
+-  BTCreate(&but[BDN10],  ctrlW,BX2,            BY0,BUTTW/2,BUTTH, "",    BCLS);
+-  BTCreate(&but[BUP10],  ctrlW,BX2+BUTTW/2 + 1,BY0,BUTTW/2,BUTTH, "",    BCLS);
+-  BTCreate(&but[BROTL],  ctrlW,BX3,            BY0,BUTTW/2,BUTTH, "",    BCLS);
+-  BTCreate(&but[BROTR],  ctrlW,BX3+BUTTW/2 + 1,BY0,BUTTW/2,BUTTH, "",    BCLS);
+-  BTCreate(&but[BFLIPH], ctrlW,BX4,            BY0,BUTTW/2,BUTTH, "",    BCLS);
+-  BTCreate(&but[BFLIPV], ctrlW,BX4+BUTTW/2 + 1,BY0,BUTTW/2,BUTTH, "",    BCLS);
+-  BTCreate(&but[BGRAB],  ctrlW,BX5,            BY0,BUTTW,  BUTTH, "Grab",BCLS);
++  BTCreate(&but[BCOPY],   ctrlW, 0, 0, BUTTW/2,BUTTH, "",    BCLS);
++  BTCreate(&but[BCUT],    ctrlW, 0, 0, BUTTW/2,BUTTH, "",    BCLS);
++  BTCreate(&but[BPASTE],  ctrlW, 0, 0, BUTTW/2,BUTTH, "",    BCLS);
++  BTCreate(&but[BCLEAR],  ctrlW, 0, 0, BUTTW/2,BUTTH, "",    BCLS);
++  BTCreate(&but[BDN10],   ctrlW, 0, 0, BUTTW/2,BUTTH, "",    BCLS);
++  BTCreate(&but[BUP10],   ctrlW, 0, 0, BUTTW/2,BUTTH, "",    BCLS);
++  BTCreate(&but[BROTL],   ctrlW, 0, 0, BUTTW/2,BUTTH, "",    BCLS);
++  BTCreate(&but[BROTR],   ctrlW, 0, 0, BUTTW/2,BUTTH, "",    BCLS);
++  BTCreate(&but[BFLIPH],  ctrlW, 0, 0, BUTTW/2,BUTTH, "",    BCLS);
++  BTCreate(&but[BFLIPV],  ctrlW, 0, 0, BUTTW/2,BUTTH, "",    BCLS);
++  BTCreate(&but[BGRAB],   ctrlW, 0, 0, BUTTW,  BUTTH, "Grab",BCLS);
+ 
++  /* second row */
+ 
+-  BTCreate(&but[BPAD],    ctrlW,BX0,          BY1,BUTTW/2,BUTTH,"",BCLS);
+-  BTCreate(&but[BANNOT],  ctrlW,BX0+BUTTW/2+1,BY1,BUTTW/2,BUTTH,"",BCLS);
++  BTCreate(&but[BPAD],    ctrlW, 0, 0, BUTTW/2,BUTTH, "",BCLS);
++  BTCreate(&but[BANNOT],  ctrlW, 0, 0, BUTTW/2,BUTTH, "",BCLS);
+ 
+-  BTCreate(&but[BCROP],   ctrlW,BX1,  BY1,BUTTW,BUTTH,"Crop",    BCLS);
+-  BTCreate(&but[BUNCROP], ctrlW,BX2,  BY1,BUTTW,BUTTH,"UnCrop",  BCLS);
+-  BTCreate(&but[BACROP],  ctrlW,BX3,  BY1,BUTTW,BUTTH,"AutoCrop",BCLS);
+-  BTCreate(&but[BABOUT],  ctrlW,BX4,  BY1,BUTTW,BUTTH,"About XV",BCLS);
+-  BTCreate(&but[BQUIT],   ctrlW,BX5,  BY1,BUTTW,BUTTH,"Quit",    BCLS);
+-
+-  BTCreate(&but[BXV],     ctrlW,5,5, 100, (u_int) nList.y - 5 - 2 - 5,
+-	   "", BCLS);
++  BTCreate(&but[BCROP],   ctrlW, 0, 0, BUTTW,BUTTH, "Crop",    BCLS);
++  BTCreate(&but[BUNCROP], ctrlW, 0, 0, BUTTW,BUTTH, "UnCrop",  BCLS);
++  BTCreate(&but[BACROP],  ctrlW, 0, 0, BUTTW,BUTTH, "AutoCrop",BCLS);
++  BTCreate(&but[BABOUT],  ctrlW, 0, 0, BUTTW,BUTTH, "About XV",BCLS);
++  BTCreate(&but[BQUIT],   ctrlW, 0, 0, BUTTW,BUTTH, "Quit",    BCLS);
+ 
+   SetButtPix(&but[BCOPY],  copyPix,  copy_width,   copy_height);
+   SetButtPix(&but[BCUT],   cutPix,   cut_width,    cut_height);
+@@ -339,30 +462,32 @@ void CreateCtrl(geom)
+   SetButtPix(&but[BXV], uiconPix, uicon_width,  uicon_height);
+ #endif
+ 
++  arrangeButtons();
++
+   XMapSubwindows(theDisp, ctrlW);
+ 
+ 
+   /* have to create menu buttons after XMapSubWindows, as we *don't* want
+      the popup menus mapped */
+ 
+-  MBCreate(&dispMB,   ctrlW, CTRLWIDE - 8 - 112 - 2*(112+2), 5,112,19,
++  MBCreate(&dispMB,   ctrlW, 0,0, MBWIDTH,MBHEIGHT,
+ 	   "Display",    dispMList,   DMB_MAX,    BCLS);
+-  MBCreate(&conv24MB, ctrlW, CTRLWIDE - 8 - 112 - (112+2),   5,112,19,
++  MBCreate(&conv24MB, ctrlW, 1,0, MBWIDTH,MBHEIGHT,
+ 	   "24/8 Bit",   conv24MList, CONV24_MAX, BCLS);
+-  MBCreate(&algMB,    ctrlW, CTRLWIDE - 8 - 112,             5,112,19,
++  MBCreate(&algMB,    ctrlW, 2,0, MBWIDTH,MBHEIGHT,
+ 	   "Algorithms", algMList,    ALG_MAX,    BCLS);
+ 
+-  MBCreate(&rootMB,   ctrlW, CTRLWIDE - 8 - 112 - 2*(112+2), 5+21,112,19,
++  MBCreate(&rootMB,   ctrlW, 0,1, MBWIDTH,MBHEIGHT,
+ 	   "Root",       rootMList,   RMB_MAX,    BCLS);
+-  MBCreate(&windowMB, ctrlW, CTRLWIDE - 8 - 112 - (112+2),   5+21,112,19,
++  MBCreate(&windowMB, ctrlW, 1,1, MBWIDTH,MBHEIGHT,
+ 	   "Windows",    windowMList, WMB_MAX,    BCLS);
+-  MBCreate(&sizeMB,   ctrlW, CTRLWIDE - 8 - 112,             5+21,112,19,
++  MBCreate(&sizeMB,   ctrlW, 2,1, MBWIDTH,MBHEIGHT,
+ 	   "Image Size", sizeMList,   SZMB_MAX,   BCLS);
+ 
+-
+-
+ #undef BCLS
+ 
++  arrangeMenuButtons();
++
+ 
+   /* set up initial state for various controls */
+ 
+@@ -382,11 +507,12 @@ void CreateCtrl(geom)
+   BTSetActive(&but[BDELETE], (numnames>=1));
+ }
+ 
++
+ /***************************************************/
+ void SetButtPix(bp, pix, w,h)
+-     BUTT *bp;
+-     Pixmap pix;
+-     int    w,h;
++    BUTT *bp;
++    Pixmap pix;
++    int    w,h;
+ {
+   if (!bp) return;
+   bp->pix = pix;  bp->pw = w;  bp->ph = h;
+@@ -395,9 +521,9 @@ void SetButtPix(bp, pix, w,h)
+ 
+ /***************************************************/
+ Pixmap MakePix1(win, bits, w, h)
+-     Window win;
+-     byte *bits;
+-     int   w,h;
++    Window win;
++    byte *bits;
++    int   w,h;
+ {
+   return XCreatePixmapFromBitmapData(theDisp, win, (char *) bits,
+ 				     (u_int) w, (u_int) h, 1L,0L,1);
+@@ -406,7 +532,7 @@ Pixmap MakePix1(win, bits, w, h)
+ 
+ /***************************************************/
+ void CtrlBox(vis)
+-int vis;
++    int vis;
+ {
+   if (vis) XMapRaised(theDisp, ctrlW);
+   else     XUnmapWindow(theDisp, ctrlW);
+@@ -417,12 +543,12 @@ int vis;
+ 
+ /***************************************************/
+ void RedrawCtrl(x,y,w,h)
+-int x,y,w,h;
++    int x,y,w,h;
+ {
+   int i;
+ 
+-  RANGE(w, 0, CTRLWIDE);
+-  RANGE(h, 0, CTRLHIGH);
++  RANGE(w, 0, CtrlWide());
++  RANGE(h, 0, CtrlHigh());
+ 
+ #ifdef CLIPRECT
+   xr.x = x;  xr.y = y;  xr.width = w;  xr.height = h;
+@@ -468,12 +594,12 @@ void DrawCtrlNumFiles()
+   sprintf(foo, "%d file%s", numnames, (numnames==1) ? "" : "s");
+ 
+   XSetForeground(theDisp, theGC, infobg);
+-  XFillRectangle(theDisp,ctrlW, theGC, x+1,y+1, (u_int) w-1, (u_int) CHIGH+5);
++  XFillRectangle(theDisp, ctrlW, theGC, x+1,y+1, (u_int) w-1, (u_int) CHIGH+5);
+ 
+   XSetForeground(theDisp,theGC,infofg);
+-  XDrawRectangle(theDisp,ctrlW, theGC, x,y,     (u_int) w,   (u_int) CHIGH+6);
++  XDrawRectangle(theDisp, ctrlW, theGC, x,y,     (u_int) w,   (u_int) CHIGH+6);
+ 
+-  Draw3dRect(ctrlW, x+1,y+1,                    (u_int) w-2, (u_int) CHIGH+4,
++  Draw3dRect(ctrlW,                     x+1,y+1, (u_int) w-2, (u_int) CHIGH+4,
+ 	     R3D_IN, 2, hicol, locol, infobg);
+ 
+   XSetForeground(theDisp,theGC,infofg);
+@@ -493,26 +619,26 @@ void DrawCtrlStr()
+ 
+   XSetForeground(theDisp, theGC, infobg);
+   XFillRectangle(theDisp, ctrlW, theGC, 0, y+1,
+-		 CTRLWIDE, (u_int)((CHIGH+4)*2+1));
++		 CtrlWide(), (u_int)((CHIGH+4)*2+1));
+ 
+   XSetForeground(theDisp, theGC, infofg);
+-  XDrawLine(theDisp, ctrlW, theGC, 0, y,   CTRLWIDE, y);
+-  XDrawLine(theDisp, ctrlW, theGC, 0, y+CHIGH+4, CTRLWIDE, y+CHIGH+4);
+-  XDrawLine(theDisp, ctrlW, theGC, 0, y+(CHIGH+4)*2, CTRLWIDE, y+(CHIGH+4)*2);
++  XDrawLine(theDisp, ctrlW, theGC, 0, y, CtrlWide(), y);
++  XDrawLine(theDisp, ctrlW, theGC, 0, y+CHIGH+4, CtrlWide(), y+CHIGH+4);
++  XDrawLine(theDisp, ctrlW, theGC, 0, y+(CHIGH+4)*2, CtrlWide(), y+(CHIGH+4)*2);
+ 
+   if (ctrlColor) {
+     XSetForeground(theDisp, theGC, locol);
+-    XDrawLine(theDisp, ctrlW, theGC, 0, y+1,   CTRLWIDE, y+1);
+-    XDrawLine(theDisp, ctrlW, theGC, 0, y+CHIGH+5, CTRLWIDE, y+CHIGH+5);
++    XDrawLine(theDisp, ctrlW, theGC, 0, y+1, CtrlWide(), y+1);
++    XDrawLine(theDisp, ctrlW, theGC, 0, y+CHIGH+5, CtrlWide(), y+CHIGH+5);
+     XDrawLine(theDisp, ctrlW, theGC, 0, y+(CHIGH+4)*2+1,
+-	      CTRLWIDE, y+(CHIGH+4)*2+1);
++	      CtrlWide(), y+(CHIGH+4)*2+1);
+   }
+ 
+   if (ctrlColor) XSetForeground(theDisp, theGC, hicol);
+-  XDrawLine(theDisp, ctrlW, theGC, 0, y+2, CTRLWIDE, y+2);
+-  XDrawLine(theDisp, ctrlW, theGC, 0, y+CHIGH+6, CTRLWIDE, y+CHIGH+6);
++  XDrawLine(theDisp, ctrlW, theGC, 0, y+2, CtrlWide(), y+2);
++  XDrawLine(theDisp, ctrlW, theGC, 0, y+CHIGH+6, CtrlWide(), y+CHIGH+6);
+   if (ctrlColor) XSetForeground(theDisp, theGC, infobg);
+-  XDrawLine(theDisp, ctrlW, theGC, 0, ptop, CTRLWIDE, ptop);
++  XDrawLine(theDisp, ctrlW, theGC, 0, ptop, CtrlWide(), ptop);
+ 
+   XSetForeground(theDisp, theGC, infofg);
+   DrawString(ctrlW, 10, y+ASCENT+3,       st);
+@@ -522,7 +648,7 @@ void DrawCtrlStr()
+ 
+ /***************************************************/
+ int ClickCtrl(x,y)
+-int x,y;
++    int x,y;
+ {
+   BUTT *bp;
+   int   i;
+@@ -540,10 +666,9 @@ int x,y;
+ }
+ 
+ 
+-
+ /***************************************************/
+ void ScrollToCurrent(lst)
+-LIST *lst;
++    LIST *lst;
+ {
+   /* called when selected item on list is changed.  Makes the selected
+      item visible.  If it already is, nothing happens.  Otherwise, it
+@@ -579,14 +704,12 @@ static void RedrawNList(delta, sptr)
+ /***************************************************/
+ void LSCreate(lp, win, x, y, w, h, nlines, strlist, nstr, fg, bg, hi, lo,
+ 	      fptr, typ, donly)
+-LIST         *lp;
+-Window        win;
+-int           x,y,w,h,nlines,nstr,typ,donly;
+-unsigned long fg, bg, hi, lo;
+-char        **strlist;    /* a pointer to a list of strings */
+-
+-void        (*fptr)PARM((int,SCRL *));
+-
++    LIST         *lp;
++    Window        win;
++    int           x,y,w,h,nlines,nstr,typ,donly;
++    unsigned long fg, bg, hi, lo;
++    char        **strlist;    /* a pointer to a list of strings */
++    void        (*fptr)PARM((int, SCRL *));
+ {
+   if (ctrlColor) h += 4;
+ 
+@@ -606,19 +729,33 @@ void        (*fptr)PARM((int,SCRL *));
+ 
+   XSelectInput(theDisp, lp->win, ExposureMask | ButtonPressMask);
+ 
+-  SCCreate(&lp->scrl, lp->win, w-20, -1, 1, h, 0,
+-	   nstr-nlines, 0, nlines-1, fg, bg, hi, lo, fptr);
++  SCCreate(&lp->scrl, lp->win, w-20, -1, TRUE, h, 0,
++           nstr-nlines, 0, nlines-1, fg, bg, hi, lo, fptr);
+ 
+   XMapSubwindows(theDisp, lp->win);
+ }
+ 
+ 
++void LSResize(lp, w, h, nlines)
++    LIST *lp;
++    int w, h, nlines;
++{
++  if (ctrlColor) h += 4;
++
++  lp->w = w;
++  lp->h = h;
++  lp->nlines = nlines;
++
++  XResizeWindow(theDisp, lp->win, w, h);
++  SCChange(&lp->scrl, w-20, -1, TRUE, h, 0, lp->nstr-nlines, lp->scrl.val, lp->scrl.page);
++}
++
+ 
+ /***************************************************/
+ void LSChangeData(lp, strlist, nstr)
+-LIST         *lp;
+-char        **strlist;
+-int           nstr;
++    LIST         *lp;
++    char        **strlist;
++    int           nstr;
+ {
+   /* tries to keep list selection and scrollbar in same place, if possible */
+ 
+@@ -633,9 +770,9 @@ int           nstr;
+ 
+ /***************************************************/
+ void LSNewData(lp, strlist, nstr)
+-LIST         *lp;
+-char        **strlist;
+-int           nstr;
++    LIST         *lp;
++    char        **strlist;
++    int           nstr;
+ {
+   lp->str = strlist;
+   lp->nstr = nstr;
+@@ -646,7 +783,7 @@ int           nstr;
+ 
+ /***************************************************/
+ static void ls3d(lp)
+-LIST *lp;
++    LIST *lp;
+ {
+   /* redraws lists 3d-effect, which can be trounced by drawSel() */
+   Draw3dRect(lp->win, 0, 0, lp->w-1, lp->h-1, R3D_IN, 2,
+@@ -656,8 +793,8 @@ LIST *lp;
+ 
+ /***************************************************/
+ static void drawSel(lp,j)
+-LIST *lp;
+-int j;
++    LIST *lp;
++    int j;
+ {
+   int i, inactive, x0,y0,wide, selected;
+   unsigned long fg, bg;
+@@ -733,8 +870,8 @@ int j;
+ 
+ /***************************************************/
+ void LSRedraw(lp, delta)
+-LIST *lp;
+-int   delta;
++    LIST *lp;
++    int   delta;
+ {
+   int  i;
+ 
+@@ -746,8 +883,8 @@ int   delta;
+ 
+ /***************************************************/
+ int LSClick(lp,ev)
+-LIST *lp;
+-XButtonEvent *ev;
++    LIST *lp;
++    XButtonEvent *ev;
+ {
+   /* returns '-1' normally.  returns 0 -> numnames-1 for a goto */
+ 
+@@ -765,7 +902,7 @@ XButtonEvent *ev;
+   if (sel >= lp->nstr) sel = lp->selected;
+ 
+   /* see if it's a double click */
+-  if (ev->time - lasttime < DBLCLKTIME && sel==lastsel
++  if (ev->time - lasttime < DBLCLICKTIME && sel==lastsel
+       && (lp->scrl.val + (y-y0)/LINEHIGH) < lp->nstr
+       && !INACTIVE(lp,sel)) {
+     return (sel);
+@@ -822,11 +959,10 @@ XButtonEvent *ev;
+ }
+ 
+ 
+-
+ /***************************************************/
+ void LSKey(lp, key)
+-     LIST         *lp;
+-     int           key;
++    LIST         *lp;
++    int           key;
+ {
+   if      (key==LS_PAGEUP)   SCSetVal(&lp->scrl,lp->scrl.val - (lp->nlines-1));
+   else if (key==LS_PAGEDOWN) SCSetVal(&lp->scrl,lp->scrl.val + (lp->nlines-1));
+diff --git a/xvcut.c b/xvcut.c
+index ca1e068..69058dc 100644
+--- a/xvcut.c
++++ b/xvcut.c
+@@ -56,7 +56,6 @@
+ #include "bits/copy"
+ #include "bits/copym"
+ 
+-#define DBLCLKTIME 500
+ #define CLIPPROP   "XV_CLIPBOARD"
+ 
+ 
+@@ -214,7 +213,7 @@ void DoImgPaste()
+ 
+   /* if there's no selection, make one! */
+   if (!HaveSelection()) makePasteSel(cimg);
+-                   else doPaste(cimg);
++  doPaste(cimg);
+ 
+   free(cimg);
+   SetCursors(-1);
+@@ -1199,7 +1198,7 @@ int DoSelection(ev)
+ 
+   if (ev->button == Button1) {
+     /* double clicked B1 ? */
+-    if (lastClickButton==Button1 && (ev->time - lastClickTime) < DBLCLKTIME) {
++    if (lastClickButton==Button1 && (ev->time - lastClickTime) < DBLCLICKTIME) {
+       lastClickButton=Button3;
+       if (HaveSelection() && PTINRECT(px, py, selrx, selry, selrw, selrh)) {
+ 	EnableSelection(0);
+diff --git a/xvdial.c b/xvdial.c
+index 5d58593..8086f25 100644
+--- a/xvdial.c
++++ b/xvdial.c
+@@ -399,7 +399,7 @@ static void drawButt(dp, i, lit)
+      DIAL *dp;
+      int i, lit;
+ {
+-  Pixmap pix = (Pixmap) NULL;
++  Pixmap pix = (Pixmap) None;
+ 
+   XSetForeground(theDisp, theGC, dp->fg);
+   XDrawRectangle(theDisp, dp->win, theGC, dp->bx[i], dp->by[i], 14, 10);
+diff --git a/xvdir.c b/xvdir.c
+index c2e66b4..a143a35 100644
+--- a/xvdir.c
++++ b/xvdir.c
+@@ -4,9 +4,12 @@
+  * callable functions:
+  *
+  *   CreateDirW(geom,bwidth)-  creates the dirW window.  Doesn't map it.
++ *   ResizeDirW()	    -  change the size of the dirW window
+  *   DirBox(vis)            -  random processing based on value of 'vis'
+  *                             maps/unmaps window, etc.
+  *   ClickDirW()            -  handles mouse clicks in DirW
++ *   DbouleClickDirW()      -  handles mouse double-clicks in DirW
++ *   DragDirW()             -  handles mouse movement with mouse down in DirW
+  *   LoadCurrentDirectory() -  loads up current dir information for dirW
+  *   GetDirPath()           -  returns path that 'dirW' is looking at
+  *   DoSave()               -  calls appropriate save routines
+@@ -32,15 +35,20 @@
+ #endif
+ 
+ 
+-#define DIRWIDE  350               /* (fixed) size of directory window */
+-#define DIRHIGH  400
++#define DEF_DIRWIDE 350            /* initial size of directory window */
++#define DEF_DIRHIGH 400
++#define MIN_DIRWIDE 330
++#define MIN_DIRHIGH 300
+ 
+-#define NLINES   15                /* # of lines in list control (keep odd) */
+-#define LISTWIDE 237               /* width of list window */
+-#define BUTTW    60                /* width of buttons */
++#define DLIST_X  10                /* left of directory list box */
++#define DLIST_Y  30                /* top of directory list box */
++#define DNAM_X   80                /* left of filename box */
++
++#define NLINES   15                /* initial # of lines in list control (keep odd) */
++#define BUTTW    80                /* width of buttons */
+ #define BUTTH    24                /* height of buttons */
+-#define DDWIDE  (LISTWIDE-80+15)   /* max width of dirMB */
+-#define DNAMWIDE 252               /* width of 'file name' entry window */
++#define MBDIRPAD 10                /* space around directory name in menu button */
++#define DNAMMORE 3                 /* width of "more off screen" markers */
+ #define MAXDEEP  30                /* max num of directories in cwd path */
+ #define MAXFNLEN 256               /* max len of filename being entered */
+ 
+@@ -109,28 +117,41 @@ static const char *saveFormats[] = {
+ 					"Filename List" };
+ 
+ #ifdef HAVE_PIC2
+-extern int PIC2SaveParams    PARM((char *, int));
+-#endif
+-
+-static void arrangeButts     PARM((int));
+-static void RedrawDList      PARM((int, SCRL *));
+-static void changedDirMB     PARM((int));
+-static int  dnamcmp          PARM((const void *, const void *));
+-static int  FNameCdable      PARM((void));
+-static void loadCWD          PARM((void));
++extern int PIC2SaveParams       PARM((char *, int));
++#endif
++
++static int  DirHigh             PARM((void));
++static int  DirWide             PARM((void));
++static int  roomForLines        PARM((int));
++static int  DNamWide            PARM((void));
++static int  DNamY               PARM((void));
++static void arrangeElements     PARM((int));
++static int  posOfCoordinate     PARM((int));
++static void moveInsertionPoint  PARM((int));
++static void unselect            PARM((void));
++static void removeSelectedRange PARM((void));
++static void pasteIntoBox        PARM((const char *text));
++static void RedrawDList         PARM((int, SCRL *));
++static void changedDirMB        PARM((int));
++static int  updatePrimarySelection PARM((void));
++static int  updateClipboardSelection PARM((void));
++static int  dnamcmp             PARM((const void *, const void *));
++static int  FNameCdable         PARM((void));
++static void loadCWD             PARM((void));
+ #ifdef FOO
+-static int  cd_able          PARM((char *));
++static int  cd_able             PARM((char *));
+ #endif
+-static void scrollToFileName PARM((void));
+-static void setFName         PARM((const char *));
+-static void showFName        PARM((void));
+-static void changeSuffix     PARM((void));
+-static int  autoComplete     PARM((void));
++static void scrollToFileName    PARM((void));
++static void setFName            PARM((const char *));
++static void showFName           PARM((void));
++static void changeSuffix        PARM((void));
++static int  autoComplete        PARM((void));
+ 
+-static byte *handleBWandReduced   PARM((byte *, int,int,int, int, int *,
++static byte *handleBWandReduced PARM((byte *, int,int,int, int, int *,
+ 					byte **, byte **, byte **));
+-static byte *handleNormSel        PARM((int *, int *, int *, int *));
++static byte *handleNormSel      PARM((int *, int *, int *, int *));
+ 
++static int   dir_h; /* current height of dir window */
+ 
+ static char       *fnames[MAXNAMES];
+ static int         numfnames = 0, ndirs = 0;
+@@ -146,6 +167,7 @@ static char        deffname[MAXFNLEN+100];   /* default filename */
+ static int   savemode;                 /* if 0 'load box', if 1 'save box' */
+ static int   curPos;                   /* insertion point in textedit filename */
+ static int   stPos, enPos;             /* start and end of visible textedit filename */
++static int   selPos, selLen;           /* start and length of selected region of textedit filename */
+ static MBUTT dirMB;                    /* popup path menu */
+ static MBUTT fmtMB;                    /* 'format' menu button (Save only) */
+ static MBUTT colMB;                    /* 'colors' menu button (Save only) */
+@@ -162,72 +184,135 @@ static int  dopipe;
+ 
+ 
+ /***************************************************/
+-void CreateDirW(geom)
+-     char *geom;
++static int DirHigh()
++{
++  return dir_h;
++}
++
++
++/***************************************************/
++static int DirWide()
+ {
++  return dList.w + 113;
++}
++
++
++/***************************************************/
++static int roomForLines(height)
++    int height;
++{
++  int num;
++
++  num = (height - (dList.y + 66))/LINEHIGH;
++  if (num < 1)
++    num = 1;
++  if (num > MAXNAMES)
++    num = MAXNAMES;
++
++  return num;
++}
++
++
++/***************************************************/
++void ResizeDirW(w, h)
++    int w, h;
++{
++  int nlines;
++
++  dir_h = h;
++
++  nlines = roomForLines(h);
++  LSResize(&dList, w - 113, LINEHIGH*nlines, nlines);
++  arrangeElements(savemode);
++  showFName();
++}
++
++
++/***************************************************/
++static int DNamWide()
++{
++  return DirWide() - 100;
++}
++
++
++/***************************************************/
++static int DNamY()
++{
++  return DirHigh() - (10 + 2 + LINEHIGH+5);
++}
++
++
++/***************************************************/
++void CreateDirW()
++{
++  int nlines;
++
+   path[0] = '\0';
+ 
+   xv_getwd(loadpath, sizeof(loadpath));
+   xv_getwd(savepath, sizeof(savepath));
+ 
+-
+-  dirW = CreateWindow("","XVdir", geom, DIRWIDE, DIRHIGH, infofg, infobg, 0);
++  dir_h = DEF_DIRHIGH;
++  dirW = CreateFlexWindow("", "XVdir", NULL, DEF_DIRWIDE, DEF_DIRHIGH,
++			  infofg, infobg, FALSE, FALSE, FALSE);
+   if (!dirW) FatalError("couldn't create 'directory' window!");
++  SetMinSizeWindow(dirW, MIN_DIRWIDE, MIN_DIRHIGH);
+ 
+-  LSCreate(&dList, dirW, 10, 5 + 3*(6+LINEHIGH) + 6, LISTWIDE,
+-	   LINEHIGH*NLINES, NLINES, fnames, numfnames, infofg, infobg,
+-	   hicol, locol, RedrawDList, 1, 0);
++  nlines = roomForLines(dir_h);
+ 
+-  dnamW = XCreateSimpleWindow(theDisp, dirW, 80, dList.y + (int) dList.h + 30,
+-			      (u_int) DNAMWIDE+6, (u_int) LINEHIGH+5,
++  LSCreate(&dList, dirW, DLIST_X, 5 + 3*(6+LINEHIGH) + 6, DEF_DIRWIDE - 113,
++	   LINEHIGH*nlines, nlines, fnames, numfnames, infofg, infobg,
++	   hicol, locol, RedrawDList, TRUE, FALSE);
++
++
++  dnamW = XCreateSimpleWindow(theDisp, dirW, 0, 0, 1, 1,
+ 			      1, infofg, infobg);
+   if (!dnamW) FatalError("can't create name window");
+   XSelectInput(theDisp, dnamW, ExposureMask);
+ 
++  /* create checkboxes */
+ 
+-  CBCreate(&browseCB,   dirW, DIRWIDE/2, dList.y + (int) dList.h + 6,
++  CBCreate(&browseCB,   dirW, 0, 0,
+ 	   "Browse", infofg, infobg, hicol,locol);
+ 
+-  CBCreate(&savenormCB, dirW, 220, dList.y + (int) dList.h + 6,
+-	   "Normal Size", infofg, infobg,hicol,locol);
+-
+-  CBCreate(&saveselCB,  dirW, 80,        dList.y + (int) dList.h + 6,
+-           "Selected Area", infofg, infobg,hicol,locol);
++  CBCreate(&savenormCB, dirW, 0, 0,
++	   "Normal Size", infofg, infobg, hicol,locol);
+ 
++  CBCreate(&saveselCB,  dirW, 0, 0,
++           "Selected Area", infofg, infobg, hicol,locol);
+ 
+   /* y-coordinates get filled in when window is opened */
+-  BTCreate(&dbut[S_BOK],     dirW, 259, 0, 80, BUTTH,
++  BTCreate(&dbut[S_BOK],     dirW, 0, 0, BUTTW, BUTTH,
+ 	   "Ok",        infofg, infobg,hicol,locol);
+-  BTCreate(&dbut[S_BCANC],   dirW, 259, 0, 80, BUTTH,
++  BTCreate(&dbut[S_BCANC],   dirW, 0, 0, BUTTW, BUTTH,
+ 	   "Cancel",    infofg,infobg,hicol,locol);
+-  BTCreate(&dbut[S_BRESCAN], dirW, 259, 0, 80, BUTTH,
++  BTCreate(&dbut[S_BRESCAN], dirW, 0, 0, BUTTW, BUTTH,
+ 	   "Rescan",    infofg,infobg,hicol,locol);
+-  BTCreate(&dbut[S_BOLDSET], dirW, 259, 0, 80, BUTTH,
++  BTCreate(&dbut[S_BOLDSET], dirW, 0, 0, BUTTW, BUTTH,
+ 	   "Prev Set",  infofg,infobg,hicol,locol);
+-  BTCreate(&dbut[S_BOLDNAM], dirW, 259, 0, 80, BUTTH,
++  BTCreate(&dbut[S_BOLDNAM], dirW, 0, 0, BUTTW, BUTTH,
+ 	   "Prev Name", infofg,infobg,hicol,locol);
+ 
+   SetDirFName("");
+   XMapSubwindows(theDisp, dirW);
+   numfnames = 0;
+ 
+-
+   /*
+    * create MBUTTs *after* calling XMapSubWindows() to keep popup unmapped
+    */
+ 
+-  MBCreate(&dirMB, dirW, 50, dList.y -(LINEHIGH+6),
+-	   (u_int) DDWIDE, (u_int) LINEHIGH, NULL, NULL, 0,
++  MBCreate(&dirMB, dirW, 0, 0, 1, 1,
++	   NULL, NULL, 0,
+ 	   infofg,infobg,hicol,locol);
+ 
+-  MBCreate(&fmtMB, dirW, DIRWIDE-FMTWIDE-10, 5,
+-	   (u_int) FMTWIDE, (u_int) LINEHIGH, NULL, saveFormats, F_MAXFMTS,
++  MBCreate(&fmtMB, dirW, 0, 0, 1, 1,
++	   NULL, saveFormats, F_MAXFMTS,
+ 	   infofg,infobg,hicol,locol);
+   fmtMB.hascheck = 1;
+   MBSelect(&fmtMB, 0);
+ 
+-  MBCreate(&colMB, dirW, DIRWIDE-COLWIDE-10, 5+LINEHIGH+6,
+-	   (u_int) COLWIDE, (u_int) LINEHIGH, NULL, saveColors, F_MAXCOLORS,
++  MBCreate(&colMB, dirW, 0, 0, 1, 1,
++	   NULL, saveColors, F_MAXCOLORS,
+ 	   infofg,infobg,hicol,locol);
+   colMB.hascheck = 1;
+   MBSelect(&colMB, 0);
+@@ -240,17 +325,16 @@ void CreateDirW(geom)
+   d_savePix = XCreatePixmapFromBitmapData(theDisp, dirW,
+                  (char *) d_save_bits, d_save_width, d_save_height,
+ 					  infofg, infobg, dispDEEP);
+-
+ }
+ 
+ 
+ /***************************************************/
+ void DirBox(mode)
+-     int mode;
++    int mode;
+ {
+   static int firstclose = 1;
+ 
+-  if (!mode) {
++  if (mode == 0) {
+     if (savemode) strcpy(savepath, path);
+              else strcpy(loadpath, path);
+ 
+@@ -262,62 +346,62 @@ void DirBox(mode)
+ 
+     XUnmapWindow(theDisp, dirW);  /* close */
+   }
++  else {
+ 
+-  else if (mode == BLOAD) {
+-    strcpy(path, loadpath);
+-    WaitCursor();  LoadCurrentDirectory();  SetCursors(-1);
++    if (mode == BLOAD) {
++      savemode = FALSE;
+ 
+-    XStoreName(theDisp, dirW, "xv load");
+-    XSetIconName(theDisp, dirW, "xv load");
++      strcpy(path, loadpath);
++      WaitCursor();  LoadCurrentDirectory();  SetCursors(-1);
+ 
+-    dbut[S_BLOADALL].str = "Load All";
+-    BTSetActive(&dbut[S_BLOADALL], 1);
++      XStoreName(theDisp, dirW, "xv load");
++      XSetIconName(theDisp, dirW, "xv load");
+ 
+-    arrangeButts(mode);
++      dbut[S_BLOADALL].str = "Load All";
++      BTSetActive(&dbut[S_BLOADALL], 1);
+ 
+-    MBSetActive(&fmtMB, 0);
+-    MBSetActive(&colMB, 0);
++      arrangeElements(savemode);
+ 
+-    CenterMapWindow(dirW, dbut[S_BOK].x+30, dbut[S_BOK].y + BUTTH/2,
+-		    DIRWIDE, DIRHIGH);
++      MBSetActive(&fmtMB, 0);
++      MBSetActive(&colMB, 0);
++    }
+ 
+-    savemode = 0;
+-  }
++    else if (mode == BSAVE) {
++      savemode = TRUE;
+ 
+-  else if (mode == BSAVE) {
+-    strcpy(path, savepath);
+-    WaitCursor();  LoadCurrentDirectory();  SetCursors(-1);
++      strcpy(path, savepath);
++      WaitCursor();  LoadCurrentDirectory();  SetCursors(-1);
+ 
+-    XStoreName(theDisp, dirW, "xv save");
+-    XSetIconName(theDisp, dirW, "xv save");
++      XStoreName(theDisp, dirW, "xv save");
++      XSetIconName(theDisp, dirW, "xv save");
+ 
+-    dbut[S_BOLDSET].str = "Prev Set";
++      dbut[S_BOLDSET].str = "Prev Set";
+ 
+-    arrangeButts(mode);
++      arrangeElements(savemode);
+ 
+-    BTSetActive(&dbut[S_BOLDSET], haveoldinfo);
+-    BTSetActive(&dbut[S_BOLDNAM], haveoldinfo);
++      BTSetActive(&dbut[S_BOLDSET], haveoldinfo);
++      BTSetActive(&dbut[S_BOLDNAM], haveoldinfo);
+ 
+-    CBSetActive(&saveselCB, HaveSelection());
++      CBSetActive(&saveselCB, HaveSelection());
+ 
+-    MBSetActive(&fmtMB, 1);
+-    if (MBWhich(&fmtMB) == F_FILELIST) {
+-      MBSetActive(&colMB,      0);
+-      CBSetActive(&savenormCB, 0);
+-    }
+-    else {
+-      MBSetActive(&colMB,      1);
+-      CBSetActive(&savenormCB, 1);
++      MBSetActive(&fmtMB, 1);
++      if (MBWhich(&fmtMB) == F_FILELIST) {
++        MBSetActive(&colMB,      0);
++        CBSetActive(&savenormCB, 0);
++      }
++      else {
++        MBSetActive(&colMB,      1);
++        CBSetActive(&savenormCB, 1);
++      }
+     }
+ 
+-    CenterMapWindow(dirW, dbut[S_BOK].x+30, dbut[S_BOK].y + BUTTH/2,
+-		    DIRWIDE, DIRHIGH);
++    CenterMapFlexWindow(dirW,
++		        dbut[S_BOK].x + BUTTW/2, dbut[S_BOK].y + BUTTH/2,
++		        DirWide(), DirHigh(), FALSE);
+ 
+-    savemode = 1;
++    scrollToFileName();
+   }
+ 
+-  scrollToFileName();
+-
+   dirUp = mode;
+   BTSetActive(&but[BLOAD], !dirUp);
+   BTSetActive(&but[BSAVE], !dirUp);
+@@ -325,12 +409,14 @@ void DirBox(mode)
+ 
+ 
+ /***************************************************/
+-static void arrangeButts(mode)
+-     int mode;
++static void arrangeElements(savemode)
++    int savemode;
+ {
+   int i, nbts, ngaps, szdiff, top, gap;
+ 
+-  nbts = (mode==BLOAD) ? S_LOAD_NBUTTS : S_NBUTTS;
++  /* buttons */
++
++  nbts = !savemode ? S_LOAD_NBUTTS : S_NBUTTS;
+   ngaps = nbts-1;
+ 
+   szdiff = dList.h - (nbts * BUTTH);
+@@ -340,48 +426,83 @@ static void arrangeButts(mode)
+     gap = 16;
+     top = dList.y + (dList.h - (nbts*BUTTH) - (ngaps*gap))/2;
+ 
+-    for (i=0; i<nbts; i++) dbut[i].y = top + i*(BUTTH+gap);
++    for (i=0; i<nbts; i++)
++      BTMove(&dbut[i],
++             dList.x + dList.w + 12,
++             top + i*(BUTTH+gap));
+   }
+   else {
+     for (i=0; i<nbts; i++)
+-      dbut[i].y = dList.y + ((dList.h-BUTTH)*i) / ngaps;
++      BTMove(&dbut[i],
++             dList.x + dList.w + 12,
++             dList.y + ((dList.h-BUTTH)*i) / ngaps);
+   }
+-}
+ 
++  /* checkboxes */
++
++  CBMove(&browseCB, DirWide()/2, dList.y + (int) dList.h + 6);
++  CBMove(&savenormCB, 220, dList.y + (int) dList.h + 6);
++  CBMove(&saveselCB, 80, dList.y + (int) dList.h + 6);
++
++  /* filename box */
++
++  XMoveResizeWindow(theDisp, dnamW,
++		    DNAM_X, DNamY(),
++		    (u_int) DNamWide()+2*DNAMMORE, (u_int) LINEHIGH+5);
++
++  /* menu buttons */
++
++  MBChange(&dirMB,
++           dList.x + dList.w/2 - dirMB.w/2,
++	   dList.y - (LINEHIGH+6),
++	   (u_int) dirMB.w, (u_int) LINEHIGH);
++
++  MBChange(&fmtMB,
++           DirWide()-FMTWIDE-10, 5,
++	   (u_int) FMTWIDE, (u_int) LINEHIGH);
++
++  MBChange(&colMB,
++           DirWide()-COLWIDE-10, 5+LINEHIGH+6,
++	   (u_int) COLWIDE, (u_int) LINEHIGH);
++}
+ 
+ 
+ /***************************************************/
+-void RedrawDirW(x,y,w,h)
+-     int x,y,w,h;
++void RedrawDirW(x, y, w, h)
++    int x, y, w, h;
+ {
+   int        i, ypos, txtw;
+   char       foo[30];
+   const char *str;
+ 
+-  if (dList.nstr==1) strcpy(foo,"1 file");
+-                else sprintf(foo,"%d files",dList.nstr);
++  if (dList.nstr==1)
++    strcpy(foo, "1 file");
++  else
++    sprintf(foo, "%d files", dList.nstr);
+ 
+   ypos = dList.y + dList.h + 8 + ASCENT;
+   XSetForeground(theDisp, theGC, infobg);
+   XFillRectangle(theDisp, dirW, theGC, 10, ypos-ASCENT,
+-		 (u_int) DIRWIDE, (u_int) CHIGH);
++		 (u_int) DirWide(), (u_int) CHIGH);
+   XSetForeground(theDisp, theGC, infofg);
+   DrawString(dirW, 10, ypos, foo);
+ 
+ 
+-  if (dirUp == BLOAD) str = "Load file:";
+-                 else str = "Save file:";
+-  DrawString(dirW, 10, dList.y + (int) dList.h + 30 + 4 + ASCENT, str);
++  if (dirUp == BLOAD)
++    str = "Load file:";
++  else
++    str = "Save file:";
++  DrawString(dirW, 10, DNamY() + 1 + ASCENT + 3, str);
+ 
+   /* draw dividing line */
+   XSetForeground(theDisp,    theGC, infofg);
+-  XDrawLine(theDisp, dirW,   theGC, 0, dirMB.y-6, DIRWIDE, dirMB.y-6);
++  XDrawLine(theDisp, dirW,   theGC, 0, dirMB.y-6, DirWide(), dirMB.y-6);
+   if (ctrlColor) {
+     XSetForeground(theDisp,  theGC, locol);
+-    XDrawLine(theDisp, dirW, theGC, 0, dirMB.y-5, DIRWIDE, dirMB.y-5);
++    XDrawLine(theDisp, dirW, theGC, 0, dirMB.y-5, DirWide(), dirMB.y-5);
+     XSetForeground(theDisp,  theGC, hicol);
+   }
+-  XDrawLine(theDisp, dirW,   theGC, 0, dirMB.y-4, DIRWIDE, dirMB.y-4);
++  XDrawLine(theDisp, dirW,   theGC, 0, dirMB.y-4, DirWide(), dirMB.y-4);
+ 
+ 
+ 
+@@ -424,158 +545,322 @@ void RedrawDirW(x,y,w,h)
+ 
+ 
+ /***************************************************/
+-int ClickDirW(x,y)
+-int x,y;
++int ClickDirW(x, y, button)
++    int x, y;
++    int button;
+ {
+   BUTT  *bp;
+   int    bnum,i,maxbut,v;
+   char   buf[1024];
+ 
+-  if (savemode) {                           /* check format/colors MBUTTS */
+-    i = v = 0;
+-    if      (MBClick(&fmtMB, x,y) && (v=MBTrack(&fmtMB))>=0) i=1;
+-    else if (MBClick(&colMB, x,y) && (v=MBTrack(&colMB))>=0) i=2;
++  switch (button) {
++  case 1:
++    if (savemode) {                           /* check format/colors MBUTTS */
++      i = v = 0;
++      if      (MBClick(&fmtMB, x,y) && (v=MBTrack(&fmtMB))>=0) i=1;
++      else if (MBClick(&colMB, x,y) && (v=MBTrack(&colMB))>=0) i=2;
++
++      if (i) {  /* changed one of them */
++        if (i==1) SetDirSaveMode(F_FORMAT, v);
++             else SetDirSaveMode(F_COLORS, v);
++        changeSuffix();
++      }
++    }
+ 
+-    if (i) {  /* changed one of them */
+-      if (i==1) SetDirSaveMode(F_FORMAT, v);
+-           else SetDirSaveMode(F_COLORS, v);
+-      changeSuffix();
++    if (!savemode) {  /* LOAD */
++      if (CBClick(&browseCB,x,y)) CBTrack(&browseCB);
++    }
++    else {            /* SAVE */
++      if      (CBClick(&savenormCB,x,y)) CBTrack(&savenormCB);
++      else if (CBClick(&saveselCB,x,y))  CBTrack(&saveselCB);
+     }
+-  }
+ 
++    maxbut = (savemode) ? S_NBUTTS : S_LOAD_NBUTTS;
+ 
+-  if (!savemode) {  /* LOAD */
+-    if (CBClick(&browseCB,x,y)) CBTrack(&browseCB);
+-  }
+-  else {            /* SAVE */
+-    if      (CBClick(&savenormCB,x,y)) CBTrack(&savenormCB);
+-    else if (CBClick(&saveselCB,x,y))  CBTrack(&saveselCB);
+-  }
++    for (bnum=0; bnum<maxbut; bnum++) {
++      bp = &dbut[bnum];
++      if (PTINRECT(x, y, bp->x, bp->y, bp->w, bp->h)) break;
++    }
+ 
++    if (bnum<maxbut && BTTrack(bp)) {   /* found one */
++      if (bnum<S_BOLDSET) return bnum;  /* do Ok,Cancel,Rescan in xvevent.c */
+ 
+-  maxbut = (savemode) ? S_NBUTTS : S_LOAD_NBUTTS;
++      if (bnum == S_BOLDSET && savemode && haveoldinfo) {
++        MBSelect(&fmtMB, oldformat);
++        MBSelect(&colMB, oldcolors);
++        changeSuffix();
++      }
+ 
+-  for (bnum=0; bnum<maxbut; bnum++) {
+-    bp = &dbut[bnum];
+-    if (PTINRECT(x, y, bp->x, bp->y, bp->w, bp->h)) break;
+-  }
++      else if (bnum == S_BOLDNAM && savemode && haveoldinfo) {
++        setFName(oldfname);
++      }
+ 
+-  if (bnum<maxbut && BTTrack(bp)) {   /* found one */
+-    if (bnum<S_BOLDSET) return bnum;  /* do Ok,Cancel,Rescan in xvevent.c */
++      else if (bnum == S_BLOADALL && !savemode) {
++        int j, oldnumnames;
++        char *dname;
+ 
+-    if (bnum == S_BOLDSET && savemode && haveoldinfo) {
+-      MBSelect(&fmtMB, oldformat);
+-      MBSelect(&colMB, oldcolors);
+-      changeSuffix();
+-    }
++        oldnumnames = numnames;
+ 
+-    else if (bnum == S_BOLDNAM && savemode && haveoldinfo) {
+-      setFName(oldfname);
+-    }
++        for (i=0; i<numfnames && numnames<MAXNAMES; i++) {
++         if (fnames[i][0] == C_REG || fnames[i][0] == C_EXE) {
++           sprintf(buf,"%s%s", path, fnames[i]+1);
+ 
+-    else if (bnum == S_BLOADALL && !savemode) {
+-      int j, oldnumnames;
+-      char *dname;
++           /* check for dups.  Don't add it if it is. */
++           for (j=0; j<numnames && strcmp(buf,namelist[j]); j++);
+ 
+-      oldnumnames = numnames;
++           if (j==numnames) {  /* add to list */
++             namelist[numnames] = (char *) malloc(strlen(buf)+1);
++             if (!namelist[numnames]) FatalError("out of memory!\n");
++             strcpy(namelist[numnames],buf);
+ 
+-      for (i=0; i<numfnames && numnames<MAXNAMES; i++) {
+-	if (fnames[i][0] == C_REG || fnames[i][0] == C_EXE) {
+-	  sprintf(buf,"%s%s", path, fnames[i]+1);
++             dname = namelist[numnames];
+ 
+-	  /* check for dups.  Don't add it if it is. */
+-	  for (j=0; j<numnames && strcmp(buf,namelist[j]); j++);
++             /* figure out how much of name can be shown */
++             if (StringWidth(dname) > (nList.w-10-16)) {   /* truncate */
++               char *tmp;
++               int   prelen = 0;
+ 
+-	  if (j==numnames) {  /* add to list */
+-	    namelist[numnames] = (char *) malloc(strlen(buf)+1);
+-	    if (!namelist[numnames]) FatalError("out of memory!\n");
+-	    strcpy(namelist[numnames],buf);
++               tmp = dname;
++               while (1) {
++                 tmp = (char *) index(tmp,'/'); /* find next '/' in buf */
++                 if (!tmp) break;
+ 
+-	    dname = namelist[numnames];
++                 tmp++;                   /* move to char following the '/' */
++                 prelen = tmp - dname;
++                 if (StringWidth(tmp) <= (nList.w-10-16)) break; /* cool now */
++               }
++               dispnames[numnames] = dname + prelen;
++             }
++             else dispnames[numnames] = dname;
++             numnames++;
++           }
++         }
++        }
+ 
+-	    /* figure out how much of name can be shown */
+-	    if (StringWidth(dname) > (nList.w-10-16)) {   /* truncate */
+-	      char *tmp;
+-	      int   prelen = 0;
++        if (oldnumnames != numnames) {  /* added some */
++         if (numnames>0) BTSetActive(&but[BDELETE],1);
++         windowMB.dim[WMB_TEXTVIEW] = (numnames==0);
+ 
+-	      tmp = dname;
+-	      while (1) {
+-		tmp = (char *) index(tmp,'/'); /* find next '/' in buf */
+-		if (!tmp) break;
++         LSNewData(&nList, dispnames, numnames);
++         nList.selected = oldnumnames;
++         curname = oldnumnames - 1;
+ 
+-		tmp++;                   /* move to char following the '/' */
+-		prelen = tmp - dname;
+-		if (StringWidth(tmp) <= (nList.w-10-16)) break; /* cool now */
+-	      }
++         ActivePrevNext();
+ 
+-	      dispnames[numnames] = dname + prelen;
+-	    }
+-	    else dispnames[numnames] = dname;
++         ScrollToCurrent(&nList);
++         DrawCtrlNumFiles();
+ 
+-	    numnames++;
+-	  }
+-	}
++         if (!browseCB.val) DirBox(0);
++        }
+       }
++    }
+ 
+-      if (oldnumnames != numnames) {  /* added some */
+-	if (numnames>0) BTSetActive(&but[BDELETE],1);
+-	windowMB.dim[WMB_TEXTVIEW] = (numnames==0);
++    if (MBClick(&dirMB, x, y)) {
++      i = MBTrack(&dirMB);
++      if (i >= 0) changedDirMB(i);
++      return -1;
++    }
+ 
+-	LSNewData(&nList, dispnames, numnames);
+-	nList.selected = oldnumnames;
+-	curname = oldnumnames - 1;
++    /* handle clicks inside the filename box */
++    if (x > DNAM_X &&
++        x < DNAM_X + DNamWide()+2*DNAMMORE &&
++        y > DNamY() &&
++        y < DNamY() + LINEHIGH+5) {
++      Window dummy_root, dummy_child;
++      int dummy_rx, dummy_ry;
++      int wx, wy;
++      unsigned int mask;
++      int clkx_start, clkx_now;
++      int pos_start, pos_now, pos_prev;
++
++      /* make coordinates relative to dnamW */
++      /* left side plus the border plus the space for the "more stuff" sign */
++      clkx_start = x - (DNAM_X + 1 + DNAMMORE);
++      pos_start = posOfCoordinate(clkx_start);
++
++      clkx_now = clkx_start;
++      pos_prev = -1;
++      selPos=selLen = 0;
++      while (XQueryPointer(theDisp, dirW,
++                           &dummy_root, &dummy_child, &dummy_rx, &dummy_ry,
++                           &wx, &wy, &mask)) {
++        if (!(mask & Button1Mask)) break;    /* button released */
++
++        clkx_now = wx - (DNAM_X + 1 + DNAMMORE);
++        pos_prev = pos_now;
++        pos_now = posOfCoordinate(clkx_now);
++
++        if (pos_prev != pos_now) {
++          if (pos_start == pos_now) {
++            selPos=selLen = 0;
++            curPos = pos_start;
++          } else if (pos_start < pos_now) {
++            selPos = pos_start;
++            selLen = pos_now - pos_start;
++          } else {
++            selPos = pos_now;
++            selLen = pos_start - pos_now;
++          }
++          showFName();
++        }
++      }
+ 
+-	ActivePrevNext();
++      if (selLen > 0)
++        updatePrimarySelection();
++      else {
++        unselect();
++        moveInsertionPoint(clkx_start);
++      }
++     }
++    break;
+ 
+-	ScrollToCurrent(&nList);
+-	DrawCtrlNumFiles();
++  case 2:
++    /* handle clicks inside the filename box */
++    if (x > DNAM_X &&
++        x < DNAM_X + DNamWide()+2*DNAMMORE &&
++        y > DNamY() &&
++        y < DNamY() + LINEHIGH+5) {
++      int   clkx;
++      char *text;
+ 
+-	if (!browseCB.val) DirBox(0);
+-      }
++      /* make coordinates relative to dnamW */
++      clkx = x - (DNAM_X + 1 + DNAMMORE); /* left side plus the border plus the space for the "more stuff" sign */
++      moveInsertionPoint(clkx);
+ 
++      text = GetPrimaryText();
++
++      if (text != NULL) {
++       pasteIntoBox(text);
++        free(text);
++      }
+     }
+-  }
++    break;
++   }
+ 
++  return -1;
++}
+ 
+-  if (MBClick(&dirMB, x, y)) {
+-    i = MBTrack(&dirMB);
+-    if (i >= 0) changedDirMB(i);
++/***************************************************/
++int DoubleClickDirW(x, y, button)
++    int x, y;
++    int button;
++{
++  /* handle double-clicks inside the filename box */
++  if (button == 1 &&
++      x > DNAM_X &&
++      x < DNAM_X + DNamWide()+2*DNAMMORE &&
++      y > DNamY() &&
++      y < DNamY() + LINEHIGH+5) {
++    SelectAllDirW();
+     return -1;
+   }
++  return ClickDirW(x, y, button);
++}
+ 
+-  /* handle clicks inside the filename box, but only when box is not empty */
+-  if (enPos > stPos &&
+-      x > 80 &&
+-      y > dList.y + (int) dList.h + 30 &&
+-      x < 80 + DNAMWIDE+6 &&
+-      y < dList.y + (int) dList.h + 30 + LINEHIGH+5) {
+-    int tx;
+-    int dx;
+-    int pos;
+ 
+-    /* make coordinates relative to dnamW */
+-    tx = x - (80 + 1 + 3); /* left side plus the border plus the space for the "more stuff" sign */
++static int posOfCoordinate(clkx)
++    int clkx;
++{
++  int dx, pos;
+ 
+-    for (pos=stPos; pos+1 < enPos; pos++) {
+-      if (XTextWidth(mfinfo, &filename[stPos], 1+pos-stPos) > tx)
+-        break;
+-    }
+-    /* if we are more than halfway past this char, put the insertion point after it */
+-    dx = tx - XTextWidth(mfinfo, &filename[stPos], pos-stPos);
++  for (pos=stPos; pos < enPos; pos++) {
++    if (XTextWidth(mfinfo, &filename[stPos], pos-stPos) + 1 > clkx)
++      break;
++  }
++  /* if we are more than halfway past this char, put the insertion point after it */
++  if (pos < enPos) {
++    dx = clkx - XTextWidth(mfinfo, &filename[stPos], pos-stPos);
+     if (dx > XTextWidth(mfinfo, &filename[pos], 1)/2)
+       pos++;
++  }
++
++  return pos;
++}
++
+ 
+-    curPos = pos;
+-    showFName();
++/***************************************************/
++static void moveInsertionPoint(clkx)
++    int clkx;
++{
++  curPos = posOfCoordinate(clkx);
++  selPos=selLen = 0;
++
++  showFName();
++}
++
++
++/***************************************************/
++static void unselect()
++{
++  selPos=selLen = 0;
++  ReleaseSelection(XA_PRIMARY);
++}
++
++
++/***************************************************/
++static void removeSelectedRange()
++{
++  if (selLen > 0) {
++    int len;
++    len = strlen(filename);
++    xvbcopy(&filename[selPos + selLen], &filename[selPos], (size_t)(len - (selPos + selLen)));
++    filename[len - selLen] = '\0';
++    curPos = selPos;
++  }
++  unselect();
++}
++
++
++/***************************************************/
++static void pasteIntoBox(text)
++    const char *text;
++{
++  int len, cleanlen;
++  int tpos, cpos;
++  char ch;
++  char *clean;
++
++  removeSelectedRange();
++
++  len = strlen(filename);
++
++  clean = malloc(strlen(text)+1);
++  if (!clean) FatalError("out of memory!\n");
++
++  cpos = 0;
++  for (tpos=0; text[tpos]!='\0'; tpos++) {
++    ch = text[tpos];
++
++    /* skip non-printable characters */
++    if (ch<' ' || ch>='\177') continue;
++
++    /* note: only allow 'piped commands' in savemode... */
++    /* only allow vertbars in 'piped commands', not filenames */
++    if (ch=='|' && curPos+cpos>0 && !ISPIPE(filename[0])) continue;
++
++    /* stop if we fill up the filename array */
++    if (len + cpos >= MAXFNLEN-1) break;
++
++    clean[cpos] = ch;
++    cpos++;
+   }
++  clean[cpos] = '\0';
++  cleanlen = cpos;
+ 
+-  return -1;
++  xvbcopy(&filename[curPos], &filename[curPos+cleanlen], (size_t) (len+1-curPos));
++  xvbcopy(clean, &filename[curPos], cleanlen);
++  curPos += cleanlen;
++
++  free(clean);
++
++  scrollToFileName();
++  showFName();
+ }
+ 
+ 
+ /***************************************************/
+ void SelectDir(n)
+-int n;
++    int n;
+ {
+   /* called when entry #n in the dir list was selected/double-clicked */
+ 
+@@ -599,7 +884,7 @@ int n;
+ 
+ /***************************************************/
+ static void changedDirMB(sel)
+-     int sel;
++    int sel;
+ {
+   if (sel != 0) {   /* changed directories */
+     char tmppath[MAXPATHLEN+1], *trunc_point;
+@@ -653,8 +938,8 @@ static void changedDirMB(sel)
+ 
+ /***************************************************/
+ static void RedrawDList(delta, sptr)
+-     int   delta;
+-     SCRL *sptr;
++    int   delta;
++    SCRL *sptr;
+ {
+   LSRedraw(&dList,delta);
+ }
+@@ -670,7 +955,6 @@ static void loadCWD()
+ }
+ 
+ 
+-
+ /***************************************************/
+ void LoadCurrentDirectory()
+ {
+@@ -764,16 +1048,15 @@ void LoadCurrentDirectory()
+   dirMB.nlist = ndirs;
+   XClearArea(theDisp, dirMB.win, dirMB.x, dirMB.y,
+ 	     (u_int) dirMB.w+3, (u_int) dirMB.h+3, False);
+-  i = StringWidth(dirMBlist[0]) + 10;
+-  dirMB.x = dirMB.x + dirMB.w/2 - i/2;
+-  dirMB.w = i;
++  dirMB.w = StringWidth(dirMBlist[0]) + 2*MBDIRPAD;
++  arrangeElements(savemode);
+   MBRedraw(&dirMB);
+ 
+ 
+   dirp = opendir(".");
+   if (!dirp) {
+     LSNewData(&dList, fnames, 0);
+-    RedrawDirW(0,0,DIRWIDE,DIRHIGH);
++    RedrawDirW(0, 0, DirWide(), DirHigh());
+     return;
+   }
+ 
+@@ -848,14 +1131,14 @@ void LoadCurrentDirectory()
+ 
+   if (changedDir) LSNewData(&dList, fnames, numfnames);
+              else LSChangeData(&dList, fnames, numfnames);
+-  RedrawDirW(0,0,DIRWIDE,DIRHIGH);
++  RedrawDirW(0, 0, DirWide(), DirHigh());
+   SetCursors(-1);
+ }
+ 
+ 
+ /***************************************************/
+ void GetDirPath(buf)
+-     char *buf;
++    char *buf;
+ {
+   /* returns current 'dirW' path.  buf should be MAXPATHLEN long */
+ 
+@@ -866,7 +1149,7 @@ void GetDirPath(buf)
+ /***************************************************/
+ #ifdef FOO
+ static int cd_able(str)
+-char *str;
++    char *str;
+ {
+   return ((str[0] == C_DIR || str[0] == C_LNK));
+ }
+@@ -874,8 +1157,8 @@ char *str;
+ 
+ 
+ /***************************************************/
+-static int dnamcmp(p1,p2)
+-     const void *p1, *p2;
++static int dnamcmp(p1, p2)
++    const void *p1, *p2;
+ {
+   char **s1, **s2;
+ 
+@@ -900,12 +1183,96 @@ static int dnamcmp(p1,p2)
+ }
+ 
+ 
++/***************************************************/
++static int updatePrimarySelection()
++{
++  if (selLen > 0)
++    if (SetPrimaryText(dirW, &filename[selPos], selLen) == 0) {
++      if (DEBUG) fprintf(stderr, "unable to set PRIMARY selection\n");
++      return 0;
++    }
++
++  return 1;
++}
++
++
++/***************************************************/
++static int updateClipboardSelection()
++{
++  if (selLen > 0)
++    if (SetClipboardText(dirW, &filename[selPos], selLen) == 0) {
++      if (DEBUG) fprintf(stderr, "unable to set CLIPBOARD selection\n");
++      return 0;
++    }
++
++  return 1;
++}
++
++
++/***************************************************/
++void SelectAllDirW()
++{
++  selPos = 0;
++  selLen = strlen(filename);
++  showFName();
++  updatePrimarySelection();
++}
++
+ 
++/***************************************************/
++void InactivateDirW()
++{
++  /* FIXME: it would be nice to have two selection colors:
++   * one for selected and PRIMARY and one for just selected
++   */
++  ReleaseSelection(XA_PRIMARY);
++}
++
++
++/***************************************************/
++void CutDirW()
++{
++  updateClipboardSelection();
++
++  removeSelectedRange();
++
++  scrollToFileName();
++  showFName();
++}
++
++
++/***************************************************/
++void CopyDirW()
++{
++  updateClipboardSelection();
++}
++
++
++/***************************************************/
++void PasteDirW()
++{
++  char *text = GetClipboardText();
++
++  if (text != NULL) {
++    pasteIntoBox(text);
++    free(text);
++  }
++}
++
++
++/***************************************************/
++void ClearDirW()
++{
++  removeSelectedRange();
++
++  scrollToFileName();
++  showFName();
++}
+ 
+ 
+ /***************************************************/
+ int DirKey(c)
+-     int c;
++    int c;
+ {
+   /* got keypress in dirW.  stick on end of filename */
+   int len;
+@@ -926,6 +1293,8 @@ int DirKey(c)
+ 
+     if (len >= MAXFNLEN-1) return(-1);  /* max length of string */
+ 
++    removeSelectedRange();
++
+     xvbcopy(&filename[curPos], &filename[curPos+1], (size_t) (len-curPos+1));
+     filename[curPos]=c;  curPos++;
+ 
+@@ -933,9 +1302,13 @@ int DirKey(c)
+   }
+ 
+   else if (c=='\010') {                 /* BS */
+-    if (curPos==0) return(-1);          /* at beginning of str */
+-    xvbcopy(&filename[curPos], &filename[curPos-1], (size_t) (len-curPos+1));
+-    curPos--;
++    if (selLen > 0) {
++      removeSelectedRange();
++    } else {
++      if (curPos==0) return(-1);          /* at beginning of str */
++      xvbcopy(&filename[curPos], &filename[curPos-1], (size_t) (len-curPos+1));
++      curPos--;
++    }
+ 
+     if (strlen(filename) > (size_t) 0) scrollToFileName();
+   }
+@@ -943,33 +1316,53 @@ int DirKey(c)
+   else if (c=='\025') {                 /* ^U: clear entire line */
+     filename[0] = '\0';
+     curPos = 0;
++    unselect();
+   }
+ 
+   else if (c=='\013') {                 /* ^K: clear to end of line */
+     filename[curPos] = '\0';
++    unselect();
+   }
+ 
+   else if (c=='\001') {                 /* ^A: move to beginning */
+     curPos = 0;
++    unselect();
+   }
+ 
+   else if (c=='\005') {                 /* ^E: move to end */
+     curPos = len;
++    unselect();
+   }
+ 
+   else if (c=='\004' || c=='\177') {    /* ^D or DEL: delete character at curPos */
+-    if (curPos==len) return(-1);
+-    xvbcopy(&filename[curPos+1], &filename[curPos], (size_t) (len-curPos));
++    if (selLen > 0) {
++      removeSelectedRange();
++    } else {
++      if (curPos==len) return(-1);
++      xvbcopy(&filename[curPos+1], &filename[curPos], (size_t) (len-curPos));
++    }
++
++    if (strlen(filename) > (size_t) 0) scrollToFileName();
+   }
+ 
+   else if (c=='\002') {                 /* ^B: move backwards char */
+-    if (curPos==0) return(-1);
+-    curPos--;
++    if (selLen > 0) {
++      curPos = selPos;
++    } else {
++      if (curPos<=0) { curPos = 0; unselect(); return(-1); }
++      curPos--;
++    }
++    unselect();
+   }
+ 
+   else if (c=='\006') {                 /* ^F: move forwards char */
+-    if (curPos==len) return(-1);
+-    curPos++;
++    if (selLen > 0) {
++      curPos = selPos + selLen;
++    } else {
++      if (curPos>=len) { curPos = len; unselect(); return(-1); }
++      curPos++;
++    }
++    unselect();
+   }
+ 
+   else if (c=='\012' || c=='\015') {    /* CR or LF */
+@@ -984,6 +1377,7 @@ int DirKey(c)
+     if (!autoComplete()) XBell(theDisp, 0);
+     else {
+       curPos = strlen(filename);
++      unselect();
+       scrollToFileName();
+     }
+   }
+@@ -1015,13 +1409,14 @@ static int autoComplete()
+ 
+   int i, firstmatch, slen, nummatch, cnt;
+ 
++  slen = strlen(filename);
++
+   /* is filename a simple filename? */
+-  if (strlen(filename)==0  ||
++  if (slen==0  ||
+       ISPIPE(filename[0])  ||
+       index(filename, '/') ||
+       filename[0]=='~'   ) return 0;
+ 
+-  slen = strlen(filename);
+   for (i=0; i<dList.nstr; i++) {
+     if (strncmp(filename, dList.str[i]+1, (size_t) slen) <= 0) break;
+   }
+@@ -1059,6 +1454,7 @@ static int autoComplete()
+   return 1;
+ }
+ 
++
+ /***************************************************/
+ static void scrollToFileName()
+ {
+@@ -1067,7 +1463,7 @@ static void scrollToFileName()
+   /* called when 'fname' changes.  Tries to scroll the directory list
+      so that fname would be centered in it */
+ 
+-  /* nothing to do if scrlbar not enabled ( <= NLINES names in list) */
++  /* nothing to do if scrlbar not enabled ( <= nlines names in list) */
+   if (dList.scrl.max <= 0) return;
+ 
+   /* find the position in the namelist that the current name should be at
+@@ -1086,7 +1482,7 @@ static void scrollToFileName()
+   }
+ 
+   /* set scroll position so that 'pos' will be centered in the list */
+-  i = pos - (NLINES/2);
++  i = pos - (dList.nlines/2);
+   SCSetVal(&dList.scrl, i);
+ }
+ 
+@@ -1094,35 +1490,60 @@ static void scrollToFileName()
+ /***************************************************/
+ void RedrawDNamW()
+ {
+-  int cpos;
++  int cpos, i;
++  int xoff;
+ 
+   /* draw substring filename[stPos:enPos] and cursor */
+ 
+-  Draw3dRect(dnamW, 0, 0, (u_int) DNAMWIDE+5, (u_int) LINEHIGH+4, R3D_IN, 2,
++  Draw3dRect(dnamW, 0, 0, (u_int) DNamWide()+2*DNAMMORE-1, (u_int) LINEHIGH+4, R3D_IN, 2,
+ 	     hicol, locol, infobg);
+ 
+   XSetForeground(theDisp, theGC, infofg);
+ 
+-  if (stPos>0) {  /* draw a "there's more over here" doowah */
+-    XDrawLine(theDisp, dnamW, theGC, 0,0,0,LINEHIGH+5);
+-    XDrawLine(theDisp, dnamW, theGC, 1,0,1,LINEHIGH+5);
+-    XDrawLine(theDisp, dnamW, theGC, 2,0,2,LINEHIGH+5);
++  xoff = DNAMMORE;
++  if (selLen == 0 ||
++      selPos + selLen < stPos ||
++      selPos > enPos) {
++    XDrawString(theDisp, dnamW, theGC, xoff,ASCENT+3, &filename[stPos], enPos-stPos);
++  } else {
++    if (selPos > stPos) {
++      XDrawString(theDisp, dnamW, theGC, xoff,ASCENT+3, &filename[stPos], selPos-stPos);
++      xoff += XTextWidth(mfinfo, &filename[stPos], selPos-stPos);
++    }
++    if (selPos + selLen > enPos) {
++      XSetForeground(theDisp, theGC, infobg);
++      XSetBackground(theDisp, theGC, infofg);
++      XDrawImageString(theDisp, dnamW, theGC, xoff,ASCENT+3, &filename[selPos], enPos-selPos);
++      XSetForeground(theDisp, theGC, infofg);
++      XSetBackground(theDisp, theGC, infobg);
++    } else {
++      XSetForeground(theDisp, theGC, infobg);
++      XSetBackground(theDisp, theGC, infofg);
++      XDrawImageString(theDisp, dnamW, theGC, xoff,ASCENT+3, &filename[selPos], selLen);
++      xoff += XTextWidth(mfinfo, &filename[selPos], selLen);
++      XSetForeground(theDisp, theGC, infofg);
++      XSetBackground(theDisp, theGC, infobg);
++      XDrawString(theDisp, dnamW, theGC, xoff,ASCENT+3, &filename[selPos + selLen], enPos - (selPos + selLen));
++    }
+   }
+ 
+-  if ((size_t) enPos < strlen(filename)) {
+-    /* draw a "there's more over here" doowah */
+-    XDrawLine(theDisp, dnamW, theGC, DNAMWIDE+5,0,DNAMWIDE+5,LINEHIGH+5);
+-    XDrawLine(theDisp, dnamW, theGC, DNAMWIDE+4,0,DNAMWIDE+4,LINEHIGH+5);
+-    XDrawLine(theDisp, dnamW, theGC, DNAMWIDE+3,0,DNAMWIDE+3,LINEHIGH+5);
+-  }
++  /* draw a "there's more over here" doowah on the left */
++  if (stPos > 0)
++    for (i=0; i<DNAMMORE; i++)
++      XDrawLine(theDisp, dnamW, theGC, i,0,i,LINEHIGH+5);
+ 
+-  XDrawString(theDisp, dnamW, theGC,3,ASCENT+3,filename+stPos, enPos-stPos);
++  /* draw a "there's more over here" doowah on the right */
++  if ((size_t) enPos < strlen(filename))
++    for (i=0; i<DNAMMORE; i++)
++      XDrawLine(theDisp, dnamW, theGC, DNamWide()+DNAMMORE+i,0,DNamWide()+DNAMMORE+i,LINEHIGH+5);
+ 
+   /* draw insertion point */
+-  cpos = XTextWidth(mfinfo, &filename[stPos], curPos-stPos);
+-  XDrawLine(theDisp, dnamW, theGC, 3+cpos, 2, 3+cpos, 2+CHIGH+1);
+-  XDrawLine(theDisp, dnamW, theGC, 3+cpos, 2+CHIGH+1, 5+cpos, 2+CHIGH+3);
+-  XDrawLine(theDisp, dnamW, theGC, 3+cpos, 2+CHIGH+1, 1+cpos, 2+CHIGH+3);
++  if (selLen == 0) {
++    cpos = DNAMMORE + XTextWidth(mfinfo, &filename[stPos], curPos-stPos);
++    XDrawLine(theDisp, dnamW, theGC, cpos, 2,         cpos,   2+CHIGH+1);
++    XDrawLine(theDisp, dnamW, theGC, cpos, 2+CHIGH+1, cpos+2, 2+CHIGH+3);
++    XDrawLine(theDisp, dnamW, theGC, cpos, 2+CHIGH+1, cpos-2, 2+CHIGH+3);
++  }
+ }
+ 
+ 
+@@ -1385,10 +1806,9 @@ int DoSave()
+ }
+ 
+ 
+-
+ /***************************************************/
+ void SetDirFName(st)
+-     const char *st;
++    const char *st;
+ {
+   strncpy(deffname, st, (size_t) MAXFNLEN-1);
+   deffname[MAXFNLEN-1] = '\0';
+@@ -1398,12 +1818,13 @@ void SetDirFName(st)
+ 
+ /***************************************************/
+ static void setFName(st)
+-     const char *st;
++    const char *st;
+ {
+   strncpy(filename, st, (size_t) MAXFNLEN-1);
+   filename[MAXFNLEN-1] = '\0';  /* make sure it's terminated */
+   curPos = strlen(st);
+   stPos = 0;  enPos = curPos;
++  unselect();
+ 
+   showFName();
+ }
+@@ -1419,29 +1840,36 @@ static void showFName()
+   if (curPos<stPos) stPos = curPos;
+   if (curPos>enPos) enPos = curPos;
+ 
+-  if (stPos>len) stPos = (len>0) ? len-1 : 0;
+-  if (enPos>len) enPos = (len>0) ? len-1 : 0;
++  if (stPos>=len) stPos = (len > 0) ? len - 1 : 0;
++  if (enPos>len) enPos = len;
+ 
+-  /* while substring is shorter than window, inc enPos */
++  /* while substring is shorter than window, inc enPos,
++     or if that is maxed out, then decrement stPos
++     (and leave 1 pixel of room for the insertion point) */
+ 
+-  while (XTextWidth(mfinfo, &filename[stPos], enPos-stPos) < DNAMWIDE
+-	 && enPos<len) { enPos++; }
++  while (XTextWidth(mfinfo, &filename[stPos], enPos-stPos) + 1 <= DNamWide()) {
++    if (enPos < len) enPos++;
++    else if (stPos > 0) stPos--;
++    else break; /* string completely visible */
++  }
+ 
+   /* while substring is longer than window, dec enpos, unless enpos==curpos,
+      in which case, inc stpos */
+ 
+-  while (XTextWidth(mfinfo, &filename[stPos], enPos-stPos) > DNAMWIDE) {
+-    if (enPos != curPos) enPos--;
+-    else stPos++;
++  while (XTextWidth(mfinfo, &filename[stPos], enPos-stPos) + 1 > DNamWide()) {
++    if (enPos > curPos) enPos--;
++    else if (stPos < curPos) stPos++;
++    else break; /* did our best ... maybe one really wide character? */
+   }
+ 
+ 
+-  if (ctrlColor) XClearArea(theDisp, dnamW, 2,2, (u_int) DNAMWIDE+5-3,
+-			    (u_int) LINEHIGH+4-3, False);
++  if (ctrlColor) XClearArea(theDisp, dnamW, 2,2,
++			    (u_int) DNamWide()+(2*DNAMMORE-1)-3,
++			    (u_int) LINEHIGH+(5-1)-3, False);
+   else XClearWindow(theDisp, dnamW);
+ 
+   RedrawDNamW();
+-  BTSetActive(&dbut[S_BOK], strlen(filename)!=0);
++  BTSetActive(&dbut[S_BOK], len>0);
+ }
+ 
+ 
+@@ -1473,7 +1901,7 @@ char *GetDirFullName()
+ 
+ /***************************************************/
+ void SetDirSaveMode(group, bnum)
+-     int group, bnum;
++    int group, bnum;
+ {
+   if (group == F_COLORS) {
+     if (picType == PIC24) {   /* disable REDUCED COLOR */
+@@ -1788,7 +2216,7 @@ static int FNameCdable()
+ 
+ /**************************************************************************/
+ int Globify(fname)
+-  char *fname;
++    char *fname;
+ {
+   /* expands ~s in file names.  Returns the name inplace 'name'.
+      returns 0 if okay, 1 if error occurred (user name not found) */
+@@ -1833,11 +2261,9 @@ int Globify(fname)
+ }
+ 
+ 
+-
+-
+ /***************************************/
+ FILE *OpenOutFile(filename)
+-     const char *filename;
++    const char *filename;
+ {
+   /* opens file for output.  does various error handling bits.  Returns
+      an open file pointer if success, NULL if failure */
+@@ -1851,9 +2277,13 @@ FILE *OpenOutFile(filename)
+ 
+   /* make sure we're in the correct directory */
+ #ifdef AUTO_EXPAND
+-  if (strlen(path)) Chvdir(path);
++  if (strlen(path))
++    if (Chvdir(path))
++      return NULL;
+ #else
+-  if (strlen(path)) chdir(path);
++  if (strlen(path))
++    if (chdir(path) == -1)
++      return NULL;
+ #endif
+ 
+   if (ISPIPE(filename[0])) {   /* do piping */
+@@ -1904,9 +2334,9 @@ FILE *OpenOutFile(filename)
+ 
+ /***************************************/
+ int CloseOutFile(fp, filename, failed)
+-     FILE *fp;
+-     const char *filename;
+-     int   failed;
++    FILE       *fp;
++    const char *filename;
++    int         failed;
+ {
+   char buf[64];
+ 
+@@ -2094,7 +2524,7 @@ static byte *handleBWandReduced(pic, ptype, pw, ph, color, nc, rpp, gpp, bpp)
+ 
+ /***************************************/
+ static byte *handleNormSel(pptype, pwide, phigh, pfree)
+-     int *pptype, *pwide, *phigh, *pfree;
++    int *pptype, *pwide, *phigh, *pfree;
+ {
+   /* called to return a pointer to a 'pic', its type, its width & height,
+    * and whether or not it should be freed when we're done with it.  The 'pic'
+@@ -2157,8 +2587,8 @@ static byte *handleNormSel(pptype, pwide, phigh, pfree)
+ 
+ /***************************************/
+ byte *GenSavePic(ptypeP, wP, hP, freeP, ncP, rmapP, gmapP, bmapP)
+-     int  *ptypeP, *wP, *hP, *freeP, *ncP;
+-     byte **rmapP, **gmapP, **bmapP;
++    int   *ptypeP, *wP, *hP, *freeP, *ncP;
++    byte **rmapP, **gmapP, **bmapP;
+ {
+   /* handles the whole ugly mess of the various save options.
+    * returns an image, of type 'ptypeP', size 'wP,hP'.
+@@ -2200,7 +2630,7 @@ byte *GenSavePic(ptypeP, wP, hP, freeP, ncP, rmapP, gmapP, bmapP)
+ 
+ /***************************************/
+ void GetSaveSize(wP, hP)
+-     int *wP, *hP;
++    int *wP, *hP;
+ {
+   /* returns the size (in pixels) of the save image.  Takes 'normal size'
+      and 'save selection' checkboxes into account */
+@@ -2244,6 +2674,7 @@ static struct stat origStat, lastStat;
+ static int haveStat = 0, haveLastStat = 0;
+ static time_t lastchgtime;
+ 
++
+ /****************************/
+ void InitPoll()
+ {
+@@ -2268,7 +2699,7 @@ void InitPoll()
+ 
+ /****************************/
+ int CheckPoll(del)
+-     int del;
++    int del;
+ {
+   /* returns '1' if the file has been modified, and either
+       A) the file has stabilized (st = lastStat), or
+@@ -2315,7 +2746,7 @@ int CheckPoll(del)
+ 
+ /***************************************************************/
+ void DIRDeletedFile(name)
+-     char *name;
++    char *name;
+ {
+   /* called when file 'name' has been deleted.  If any of the browsers
+      were showing the directory that the file was in, does a rescan() */
+@@ -2332,7 +2763,7 @@ void DIRDeletedFile(name)
+ 
+ /***************************************************************/
+ void DIRCreatedFile(name)
+-     char *name;
++    char *name;
+ {
+   DIRDeletedFile(name);
+ }
+@@ -2341,8 +2772,8 @@ void DIRCreatedFile(name)
+ #ifdef HAVE_PIC2
+ /**** Stuff for PIC2Dialog box ****/
+ FILE *pic2_OpenOutFile(filename, append)
+-char *filename;
+-int *append;
++    char *filename;
++    int *append;
+ {
+     /* opens file for output.  does various error handling bits.  Returns
+        an open file pointer if success, NULL if failure */
+@@ -2357,9 +2788,13 @@ int *append;
+ 
+     /* make sure we're in the correct directory */
+ #ifdef AUTO_EXPAND
+-    if (strlen(path)) Chvdir(path);
++    if (strlen(path))
++        if (Chvdir(path))
++            return NULL;
+ #else
+-    if (strlen(path)) chdir(path);
++    if (strlen(path))
++        if (chdir(path) == -1)
++            return NULL;
+ #endif
+ 
+     if (ISPIPE(filename[0])) {   /* do piping */
+@@ -2423,7 +2858,7 @@ int *append;
+ 
+ /***************************************/
+ void pic2_KillNullFile(fp)
+-FILE *fp;
++    FILE *fp;
+ {
+     fseek(fp, (size_t) 0, SEEK_END);
+     if (ftell(fp) > 0) {
+@@ -2442,7 +2877,7 @@ FILE *fp;
+ /**** Stuff for MGCSFX Dialog box ****/
+ /***************************************/
+ int OpenOutFileDesc(filename)
+-     char *filename;
++    char *filename;
+ {
+   /* opens file for output.  does various error handling bits.  Returns
+      an open file pointer if success, NULL if failure */
+@@ -2456,9 +2891,13 @@ int OpenOutFileDesc(filename)
+ 
+   /* make sure we're in the correct directory */
+ #ifdef AUTO_EXPAND
+-  if (strlen(path)) Chvdir(path);
++  if (strlen(path))
++    if (Chvdir(path))
++      return -1;
+ #else
+-  if (strlen(path)) chdir(path);
++  if (strlen(path))
++    if (chdir(path) == -1)
++      return -1;
+ #endif
+ 
+   if (ISPIPE(filename[0])) {   /* do piping */
+diff --git a/xvevent.c b/xvevent.c
+index ec50727..d66f269 100644
+--- a/xvevent.c
++++ b/xvevent.c
+@@ -575,6 +575,13 @@ int HandleEvent(event, donep)
+ #endif
+     }
+ 
++    if (cevt->window == dirW) {
++      ResizeDirW(cevt->width, cevt->height);
++    }
++
++    if (cevt->window == ctrlW) {
++      ResizeCtrl(cevt->width, cevt->height);
++    }
+ 
+     if (cevt->window == mainW) {
+ 
+@@ -863,10 +870,8 @@ int HandleEvent(event, donep)
+ 	XWindowAttributes xwa;
+ 
+ 	GetWindowPos(&xwa);
+-	//fprintf(stderr, "RAC: orig window pos %d,%d\n", xwa.x, xwa.y);
+ 
+ 	xwa.width = eWIDE;  xwa.height = eHIGH;
+-	//fprintf(stderr, "RAC: image size now %d,%d\n", xwa.width, xwa.height);
+ 
+ 	/* try to keep the damned thing on-screen, if possible */
+ 	if (xwa.x + xwa.width  > vrWIDE) xwa.x = vrWIDE - xwa.width;
+@@ -874,7 +879,6 @@ int HandleEvent(event, donep)
+ 	if (xwa.x < 0) xwa.x = 0;
+ 	if (xwa.y < 0) xwa.y = 0;
+ 
+-	//fprintf(stderr, "RAC: moving window to %d,%d\n", xwa.x, xwa.y);
+ 	SetWindowPos(&xwa);
+       }
+ #endif
+@@ -904,42 +908,40 @@ int HandleEvent(event, donep)
+     break;
+ 
+ 
+-  case SelectionClear:  break;
++  case SelectionClear: {
++    XSelectionClearEvent const *xsclr = &event->xselectionclear;
++    if (xsclr->window == ctrlW) {
++      if (xsclr->selection == XA_PRIMARY) {
++        InactivateDirW();
++      } else {
++
++      }
++    }
++  }
++    break;
+ 
+   case SelectionRequest:
+     {
+-      XSelectionRequestEvent *xsrevt = (XSelectionRequestEvent *) event;
+-      XSelectionEvent  xse;
++      XSelectionRequestEvent const *xsrevt = &event->xselectionrequest;
++      char const *text;
+ 
+-      if (xsrevt->owner     != ctrlW      ||
+-	  xsrevt->selection != XA_PRIMARY ||
+-	  xsrevt->target    != XA_STRING) {  /* can't do it. */
+-	xse.property = None;
+-      }
+-      else {
+-	if (xsrevt->property == None) xse.property = xsrevt->target;
+-	                         else xse.property = xsrevt->property;
+-
+-	if (xse.property != None) {
+-          xerrcode = 0;
+-	  XChangeProperty(theDisp, xsrevt->requestor, xse.property,
+-			  XA_STRING, 8, PropModeReplace,
+-			  (byte *) ((xevPriSel) ? xevPriSel           : "\0"),
+-			  (int)    ((xevPriSel) ? strlen(xevPriSel)+1 : 1));
+-          XSync(theDisp, False);
+-          if (!xerrcode) xse.property = None;
+-	}
++      if (xsrevt->owner == ctrlW) {
++        if (xsrevt->selection != XA_PRIMARY ||
++           xsrevt->target    != XA_STRING) {  /* can't do it. */
++         text = NULL;
++        }
++        text = xevPriSel ? xevPriSel : "";
++      } else if (xsrevt->owner == dirW) {
++        if (xsrevt->target != XA_STRING) {
++         text = NULL; /* we don't handle any other format */
++        }
++
++        text = TextOfSelection(xsrevt->selection);
++      } else {
++        text = NULL; /* other windows don't have selections */
+       }
+ 
+-      xse.type       = SelectionNotify;
+-      xse.send_event = True;
+-      xse.display    = theDisp;
+-      xse.requestor  = xsrevt->requestor;
+-      xse.selection  = xsrevt->selection;
+-      xse.target     = xsrevt->target;
+-      xse.time       = xsrevt->time;
+-      XSendEvent(theDisp, xse.requestor, False, NoEventMask, (XEvent *) &xse);
+-      XSync(theDisp, False);
++      SendSelection(xsrevt->selection, xsrevt->requestor, xsrevt->property, xsrevt->target, xsrevt->time, text);
+     }
+     break;
+ 
+@@ -967,6 +969,46 @@ int HandleEvent(event, donep)
+ }
+ 
+ 
++/***********************************/
++extern void SendSelection(selection, requestor, property, target, time, text)
++    Atom selection;
++    Window requestor;
++    Atom property;
++    Atom target;
++    Time time;
++    char const *text;
++{
++  XSelectionEvent xse;
++
++  if (property == None)
++    xse.property = target;
++  else
++    xse.property = property;
++
++  if (text) {
++    xerrcode = 0;
++         XChangeProperty(theDisp, requestor, xse.property,
++                         XA_STRING, 8, PropModeReplace,
++                         (byte *)text,
++                         (int)(strlen(text)+1));
++    XSync(theDisp, False);
++    if (xerrcode) xse.property = None;
++  } else {
++    xse.property = None; /* we have anything to return */
++  }
++
++  xse.type       = SelectionNotify;
++  xse.send_event = True;
++  xse.display    = theDisp;
++  xse.requestor  = requestor;
++  xse.selection  = selection;
++  xse.target     = target;
++  xse.time       = time;
++  XSendEvent(theDisp, xse.requestor, False, NoEventMask, (XEvent *)&xse);
++  XSync(theDisp, False);
++}
++
++
+ /***********************************/
+ static void SelectDispMB(i)
+      int i;
+@@ -1303,6 +1345,10 @@ static void debugEvent(e)
+     fprintf(stderr,"DBGEVT: MapNotify %s\n", win2name(e->xany.window));
+     break;
+ 
++  case MappingNotify:
++    fprintf(stderr,"DBGEVT: MappingNotify %s\n", win2name(e->xany.window));
++    break;
++
+   case ReparentNotify:
+     fprintf(stderr,"DBGEVT: ReparentNotify %s\n", win2name(e->xany.window));
+     break;
+@@ -1314,6 +1360,18 @@ static void debugEvent(e)
+ 	    win2name(e->xany.window));
+     break;
+ 
++  case SelectionClear:
++    fprintf(stderr,"DBGEVT: SelectionClear window=%s selection=0x%06lx\n",
++           win2name(e->xselectionclear.window),
++           e->xselectionclear.selection);
++    break;
++
++  case SelectionRequest:
++    fprintf(stderr,"DBGEVT: SelectionRequest owner=%s selection=0x%06lx target=0x%06lx\n",
++           win2name(e->xselectionrequest.owner),
++           e->xselectionrequest.selection, e->xselectionrequest.target);
++    break;
++
+   default:
+     fprintf(stderr,"DBGEVT: unknown event type (%d), window %s\n",
+ 	    e->type, win2name(e->xany.window));
+@@ -1322,7 +1380,7 @@ static void debugEvent(e)
+ }
+ 
+ static const char *win2name(win)
+-     Window win;
++    Window win;
+ {
+   static char foo[16];
+ 
+@@ -1344,8 +1402,8 @@ static const char *win2name(win)
+ 
+ /***********************************/
+ static void handleButtonEvent(event, donep, retvalp)
+-  XEvent *event;
+-  int    *donep, *retvalp;
++    XEvent *event;
++    int    *donep, *retvalp;
+ {
+   XButtonEvent *but_event;
+   int i,x,y, done, retval, shift;
+@@ -1494,10 +1552,23 @@ static void handleButtonEvent(event, donep, retvalp)
+       else if (win == nList.scrl.win) SCTrack(&nList.scrl, x, y);
+ 
+       else if (win == dirW) {
+-	i=ClickDirW(x,y);
++       static int lastClickX=-1;
++       static int lastClickY=-1;
++       static Time lastClickTime=0;
++
++       if (abs(x - lastClickX) < 5 &&
++           abs(y - lastClickY) < 5 &&
++           (but_event->time - lastClickTime) < DBLCLICKTIME)
++         i = DoubleClickDirW(x, y, 1);
++       else
++         i = ClickDirW(x, y, 1);
++       lastClickX = x;
++       lastClickY = y;
++       lastClickTime = but_event->time;
+ 
+ 	switch (i) {
+-	case S_BOK:   if (dirUp == BLOAD) {
++       case S_BOK:
++         if (dirUp == BLOAD) {
+ 	    if (!DirCheckCD()) {
+ 	      retval = LOADPIC;
+ 	      done=1;
+@@ -1508,7 +1579,9 @@ static void handleButtonEvent(event, donep, retvalp)
+ 	  }
+ 	  break;
+ 
+-	case S_BCANC: DirBox(0);  break;
++	case S_BCANC:
++	  DirBox(0);
++	  break;
+ 
+ 	case S_BRESCAN:
+ 	  WaitCursor();  LoadCurrentDirectory();  SetCursors(-1);
+@@ -1591,8 +1664,8 @@ static void handleButtonEvent(event, donep, retvalp)
+ 
+ /***********************************/
+ static void handleKeyEvent(event, donep, retvalp)
+-  XEvent *event;
+-  int    *donep, *retvalp;
++    XEvent *event;
++    int    *donep, *retvalp;
+ {
+   /* handles KeyPress and KeyRelease events, called from HandleEvent */
+ 
+@@ -1638,6 +1711,11 @@ static void handleKeyEvent(event, donep, retvalp)
+ 
+     shift = key_event->state & ShiftMask;
+     ctrl  = key_event->state & ControlMask;
++    /* FIXME: This is wrong; mod1 can be any modifier.
++     * XV should search for Meta modifier if defined,
++     * else use Alt modifier if defined, else nothing
++     * (or change docs to say Alt and switch the priority)
++     */
+     meta  = key_event->state & Mod1Mask;
+     dealt = 0;
+ 
+@@ -1775,6 +1853,28 @@ static void handleKeyEvent(event, donep, retvalp)
+     }
+ 
+ 
++    /* check for Dir-specific keys */
++    if (key_event->window == dirW) {
++      dealt = 1;
++      if (meta) {  /* meta is down */
++        if (ks==XK_a)
++          SelectAllDirW();
++        else if (ks==XK_x)
++          CutDirW();
++        else if (ks==XK_c)
++          CopyDirW();
++        else if (ks==XK_v)
++          PasteDirW();
++        else if (ks==XK_d)
++          ClearDirW();
++        else
++          dealt = 0;
++      } else
++        dealt = 0;
++      if (dealt) break;
++    }
++
++
+     /* check for List keys */
+     if (key_event->window == ctrlW || key_event->window == dirW) {
+       LIST *theList;
+@@ -2162,7 +2262,7 @@ static void setSizeCmd()
+ 
+ /***********************************/
+ void NewCutBuffer(str)
+-     char *str;
++     char const *str;
+ {
+   /* called whenever contents of CUT_BUFFER0 and PRIMARY selection should
+      be changed.  Only works for strings.  Copies the data, so the string
+@@ -2193,8 +2293,8 @@ void DrawWindow(x,y,w,h)
+ 
+ 
+ /***********************************/
+-void WResize(w,h)
+-     int w,h;
++void WResize(w, h)
++    int w, h;
+ {
+   XWindowAttributes xwa;
+ 
+@@ -2357,7 +2457,7 @@ void WUnCrop()
+ 
+ /***********************************/
+ void GetWindowPos(xwa)
+-XWindowAttributes *xwa;
++    XWindowAttributes *xwa;
+ {
+   Window child;
+ 
+@@ -2374,10 +2474,10 @@ XWindowAttributes *xwa;
+ 
+ /***********************************/
+ void SetWindowPos(xwa)
+-XWindowAttributes *xwa;
++    XWindowAttributes *xwa;
+ {
+   /* sets window x,y,w,h values */
+-  XWindowChanges    xwc;
++  XWindowChanges xwc;
+ 
+   /* Adjust from window origin, to border origin */
+   xwc.x = xwa->x - xwa->border_width - ch_offx;
+@@ -2450,7 +2550,7 @@ XWindowAttributes *xwa;
+   /* dxwm seems to *only* pay attention to the hints */
+   {
+     XSizeHints hints;
+-    if (DEBUG) fprintf(stderr,"SWP: doing the DXWM thing\n");
++    if (DEBUG) fprintf(stderr, "SWP: doing the DXWM thing\n");
+     /* read hints for this window and adjust any position hints */
+     if (XGetNormalHints(theDisp, mainW, &hints)) {
+       hints.flags |= USPosition | USSize;
+@@ -2459,9 +2559,11 @@ XWindowAttributes *xwa;
+       XSetNormalHints(theDisp, mainW, &hints);
+     }
+ 
++#if 0
+ #ifndef MWM     /* don't do this if you're running MWM */
+     xwc.x -= 5;   xwc.y -= 25;    /* EVIL KLUDGE */
+ #endif /* MWM */
++#endif
+   }
+ #endif
+ 
+diff --git a/xvgam.c b/xvgam.c
+index b54346b..a01c505 100644
+--- a/xvgam.c
++++ b/xvgam.c
+@@ -214,7 +214,7 @@ void CreateGam(geom, gam, rgam, ggam, bgam, defpreset)
+   XSetWindowAttributes xswa;
+ 
+   gamW = CreateWindow("xv color editor", "XVcedit", geom,
+-		      GAMW, GAMH, infofg,infobg, 0);
++		      GAMW, GAMH, infofg,infobg, FALSE);
+   if (!gamW) FatalError("can't create cedit window!");
+ 
+   cmapF = XCreateSimpleWindow(theDisp,gamW, 10,   8,CMAPF_WIDE,CMAPF_HIGH,
+diff --git a/xvgraf.c b/xvgraf.c
+index b13e006..b0e3bd9 100644
+--- a/xvgraf.c
++++ b/xvgraf.c
+@@ -71,7 +71,7 @@ void CreateGraf(gp, parent, x, y, fg, bg, title)
+     gfbpix[GFB_GAMMA]  = MakePix1(parent, gf1_gamma_bits,
+ 				  gf1_gamma_width, gf1_gamma_height);
+ 
+-    for (i=0; i<N_GFB && gfbpix[i] != (Pixmap) NULL; i++);
++    for (i=0; i<N_GFB && gfbpix[i] != (Pixmap) None; i++);
+     if (i<N_GFB) FatalError("can't create graph pixmaps");
+ 
+     pixmaps_built = 1;
+diff --git a/xvinfo.c b/xvinfo.c
+index 16e6056..d4c7bac 100644
+--- a/xvinfo.c
++++ b/xvinfo.c
+@@ -46,7 +46,7 @@ void CreateInfo(geom)
+      const char *geom;
+ {
+   infoW = CreateWindow("xv info", "XVinfo", geom, INFOWIDE, INFOHIGH,
+-		       infofg, infobg, 0);
++		       infofg, infobg, False);
+   if (!infoW) FatalError("can't create info window!");
+ 
+   pennPix = XCreatePixmapFromBitmapData(theDisp, infoW,
+diff --git a/xvjp2k.c b/xvjp2k.c
+index da763fc..ccaaf43 100644
+--- a/xvjp2k.c
++++ b/xvjp2k.c
+@@ -676,12 +676,12 @@ void CreateJP2KW(void)
+ 
+     if (!(jp2kW = CreateWindow( "xvjp2k"
+                               , "XVjp2k"
+-                              , 0
++                              , FALSE
+                               , JP2KW
+                               , JP2KH
+                               , infofg
+                               , infobg
+-                              , 0
++                              , FALSE
+                               )
+          )
+        ) FatalError("can't create JPEG 2000 window!");
+diff --git a/xvjpeg.c b/xvjpeg.c
+index 1b6047b..a320520 100644
+--- a/xvjpeg.c
++++ b/xvjpeg.c
+@@ -98,7 +98,7 @@ static BUTT  jbut[J_NBUTTS];
+ /***************************************************/
+ void CreateJPEGW()
+ {
+-  jpegW = CreateWindow("xv jpeg","XVjpeg",NULL,JWIDE,JHIGH,infofg,infobg,0);
++  jpegW = CreateWindow("xv jpeg","XVjpeg",NULL,JWIDE,JHIGH,infofg,infobg,FALSE);
+   if (!jpegW) FatalError("can't create jpeg window!");
+ 
+   XSelectInput(theDisp, jpegW, ExposureMask | ButtonPressMask | KeyPressMask);
+diff --git a/xvmgcsfx.c b/xvmgcsfx.c
+index b0c95aa..5b8eb49 100644
+--- a/xvmgcsfx.c
++++ b/xvmgcsfx.c
+@@ -1752,7 +1752,7 @@ void CreateMGCSFXW()
+ 
+ 
+   mgcsfxW = CreateWindow("xv mgcsfx", "XVmgcsfx", NULL,
+-			 MSWIDE, MSHIGH, infofg, infobg, 0);
++			 MSWIDE, MSHIGH, infofg, infobg, FALSE);
+   if (!mgcsfxW) FatalError("can't create mgcsfx window!");
+ 
+   XSelectInput(theDisp, mgcsfxW,
+diff --git a/xvmisc.c b/xvmisc.c
+index 512a767..79fa1d3 100644
+--- a/xvmisc.c
++++ b/xvmisc.c
+@@ -2,6 +2,7 @@
+  * xvmisc.c - random 'handy' routines used in XV
+  *
+  *  Contains:
++ *     Window CreateFlexWindow(name, clname, geom, w, h, fg, bg, usesize, keepsize, userspec)
+  *     Window CreateWindow(name, clname, geom, w, h, fg, bg, usesize)
+  *     void   CenterString(win, str, x, y)
+  *     void   ULineString(win, str, x, y)
+@@ -58,6 +59,7 @@ static void set_cursors PARM((Cursor, Cursor));
+ static Atom atom_DELWIN = 0;
+ static Atom atom_PROTOCOLS = 0;
+ 
++
+ /***************************************************/
+ void StoreDeleteWindowProp (win)
+      Window win;
+@@ -78,13 +80,14 @@ void StoreDeleteWindowProp (win)
+ 
+ 
+ /***************************************************/
+-Window CreateWindow(name,clname,geom,defw,defh,fg,bg,usesize)
++Window CreateFlexWindow(name,clname,geom,defw,defh,fg,bg,usesize,keepsize,userspec)
+      const char   *name;
+      const char   *clname;
+      const char   *geom;
+      int           defw,defh;
+      unsigned long fg, bg;
+      int           usesize;
++     int           keepsize;
+ {
+   Window               win;
+   XSetWindowAttributes xswa;
+@@ -101,13 +104,24 @@ Window CreateWindow(name,clname,geom,defw,defh,fg,bg,usesize)
+   i = XParseGeometry(geom,&x,&y, (unsigned int *) &w, (unsigned int *) &h);
+ 
+   if (nopos) hints.flags = 0;
+-  else if ((i&XValue || i&YValue)) hints.flags = USPosition;
+-  else hints.flags = PPosition;
+ 
+   if (!usesize || !(i&WidthValue))  w = defw;
+   if (!usesize || !(i&HeightValue)) h = defh;
+ 
+-  hints.flags |= USSize | PWinGravity;
++  if (forcegeom)
++    userspec = TRUE; /* pretend it is user specified to get direct placement */
++
++  if (userspec && (i&XValue) && (i&YValue))
++    hints.flags = USPosition;
++  else
++    hints.flags = PPosition;
++
++  if (userspec && (i&WidthValue) && (i&HeightValue))
++    hints.flags |= USSize;
++  else
++    hints.flags |= PSize;
++
++  hints.flags |= PWinGravity;
+ 
+   hints.win_gravity = NorthWestGravity;
+   if (i&XValue && i&XNegative) {
+@@ -135,10 +149,10 @@ Window CreateWindow(name,clname,geom,defw,defh,fg,bg,usesize)
+   hints.x = x;                  hints.y = y;
+   hints.width = w;              hints.height = h;
+ 
+-  if (!usesize) {
++  if (keepsize) {
+     hints.min_width  = w;         hints.min_height = h;
+     hints.max_width  = w;         hints.max_height = h;
+-    hints.flags |= PMaxSize | PMinSize;
++    hints.flags |= PMinSize | PMaxSize;
+   }
+ 
+   xswa.background_pixel = bg;
+@@ -146,7 +160,7 @@ Window CreateWindow(name,clname,geom,defw,defh,fg,bg,usesize)
+   xswa.colormap         = theCmap;
+   xswa.bit_gravity      = StaticGravity;
+   xswamask = CWBackPixel | CWBorderPixel | CWColormap;
+-  if (!usesize) xswamask |= CWBitGravity;
++  if (keepsize) xswamask |= CWBitGravity; /* reduce redraw flicker */
+ 
+   win = XCreateWindow(theDisp, rootW, x, y, (u_int) w, (u_int) h,
+ 		      (u_int) bwidth, (int) dispDEEP, InputOutput,
+@@ -171,6 +185,21 @@ Window CreateWindow(name,clname,geom,defw,defh,fg,bg,usesize)
+ }
+ 
+ 
++/***************************************************/
++Window CreateWindow(name,clname,geom,defw,defh,fg,bg,usesize)
++     const char   *name;
++     const char   *clname;
++     const char   *geom;
++     int           defw,defh;
++     unsigned long fg, bg;
++     int           usesize;
++{
++  /* note: we assume the geom string was provided by the user */
++
++  return CreateFlexWindow(name, clname, geom, defw, defh,
++                         fg, bg, usesize, !usesize, usesize);
++}
++
+ 
+ /**************************************************/
+ void DrawString(win,x,y,str)
+@@ -297,7 +326,7 @@ BUTT *bp;
+   ev.display = theDisp;
+   ev.window = bp->win;
+   ev.root = rootW;
+-  ev.subwindow = (Window) NULL;
++  ev.subwindow = (Window) None;
+   ev.x = bp->x;
+   ev.y = bp->y;
+   ev.state = 0;
+@@ -323,7 +352,7 @@ void FakeKeyPress(win, ksym)
+   ev.display = theDisp;
+   ev.window = win;
+   ev.root = rootW;
+-  ev.subwindow = (Window) NULL;
++  ev.subwindow = (Window) None;
+   ev.time = CurrentTime;
+   ev.x = ev.y = ev.x_root = ev.y_root = 0;
+   ev.state = 0;
+@@ -619,7 +648,7 @@ void LoadFishCursors()
+   Pixmap fl1pix, fl1mpix, fr1pix, fr1mpix;
+   XColor fg, bg;
+ 
+-  flcurs = fl1curs = fmcurs = fr1curs = frcurs = (Pixmap) NULL;
++  flcurs = fl1curs = fmcurs = fr1curs = frcurs = (Pixmap) None;
+ 
+   flpix = XCreatePixmapFromBitmapData(theDisp, ctrlW, (char *) fc_left_bits,
+ 	     fc_w, fc_h, 1L, 0L, 1);
+@@ -660,7 +689,7 @@ void LoadFishCursors()
+   frcurs = XCreatePixmapCursor(theDisp, frpix, frmpix, &fg, &bg, 8,8);
+ 
+   if (!flcurs || !fmcurs || !frcurs || !fl1curs || !fr1curs)
+-    { flcurs = fmcurs = frcurs = (Cursor) NULL; }
++    { flcurs = fmcurs = frcurs = (Cursor) None; }
+ }
+ 
+ 
+@@ -681,7 +710,7 @@ void WaitCursor()
+     xwmh.input       = True;
+     xwmh.icon_pixmap = riconPix;
+     xwmh.icon_mask   = riconmask;
+-    xwmh.flags = (InputHint | IconPixmapHint | IconMaskHint) ;
++    xwmh.flags = InputHint | IconPixmapHint | IconMaskHint;
+     if (!useroot && mainW) XSetWMHints(theDisp, mainW, &xwmh);
+     if ( useroot && ctrlW) XSetWMHints(theDisp, ctrlW, &xwmh);
+   }
+@@ -713,7 +742,7 @@ void SetCursors(n)
+       xwmh.input       = True;
+       xwmh.icon_pixmap = iconPix;
+       xwmh.icon_mask   = iconmask;
+-      xwmh.flags = (InputHint | IconPixmapHint | IconMaskHint) ;
++      xwmh.flags = InputHint | IconPixmapHint | IconMaskHint;
+       if (!useroot && mainW) XSetWMHints(theDisp, mainW, &xwmh);
+       if ( useroot && ctrlW) XSetWMHints(theDisp, ctrlW, &xwmh);
+     }
+@@ -968,7 +997,7 @@ void ProgressMeter(min, max, val, str)
+ 
+ /***************************************************/
+ void XVDeletedFile(fullname)
+-     char *fullname;
++    char *fullname;
+ {
+   /* called whenever a file has been deleted.  Updates browser & dir windows,
+      if necessary */
+@@ -980,7 +1009,7 @@ void XVDeletedFile(fullname)
+ 
+ /***************************************************/
+ void XVCreatedFile(fullname)
+-     char *fullname;
++    char *fullname;
+ {
+   /* called whenever a file has been created.  Updates browser & dir windows,
+      if necessary */
+@@ -992,9 +1021,9 @@ void XVCreatedFile(fullname)
+ 
+ /***************************************************/
+ void xvbcopy(src, dst, len)
+-     const char *src;
+-     char *dst;
+-     size_t  len;
++    const char *src;
++    char *dst;
++    size_t  len;
+ {
+   /* Modern OS's (Solaris, etc.) frown upon the use of bcopy(),
+    * and only want you to use memcpy().  However, memcpy() is broken,
+@@ -1020,17 +1049,18 @@ void xvbcopy(src, dst, len)
+     for ( ; len>0; len--, src--, dst--) *dst = *src;
+   }
+ 
+-  else {  /* they either overlap (src>dst) or they don't overlap */
+-    /* do a forward copy */
++  else if (src>dst && src<dst+len) {  /* do a forward copy */
+     for ( ; len>0; len--, src++, dst++) *dst = *src;
+   }
++  else /* no overlap, use the fast method */
++    memcpy(dst, src, len);
+ }
+ 
+ 
+ /***************************************************/
+ int xvbcmp (s1, s2, len)
+-     const char   *s1, *s2;
+-     size_t  len;
++    const char   *s1, *s2;
++    size_t  len;
+ {
+   for ( ; len>0; len--, s1++, s2++) {
+     if      (*s1 < *s2) return -1;
+@@ -1039,10 +1069,11 @@ int xvbcmp (s1, s2, len)
+   return 0;
+ }
+ 
++
+ /***************************************************/
+ void xvbzero(s, len)
+-     char   *s;
+-     size_t  len;
++    char   *s;
++    size_t  len;
+ {
+   for ( ; len>0; len--) *s++ = 0;
+ }
+diff --git a/xvpcd.c b/xvpcd.c
+index 334fefe..31dd77f 100644
+--- a/xvpcd.c
++++ b/xvpcd.c
+@@ -635,19 +635,19 @@ static RBUTT *resnRB;
+ /***************************************************/
+ void CreatePCDW()
+ {
+-  int       y;
++  int y;
+ 
+   pcdW = CreateWindow("xv pcd", "XVpcd", NULL,
+-           TWIDE, THIGH, infofg, infobg, 0);
++                     TWIDE, THIGH, infofg, infobg, 0);
+   if (!pcdW) FatalError("can't create pcd window!");
+ 
+   XSelectInput(theDisp, pcdW, ExposureMask | ButtonPressMask | KeyPressMask);
+ 
+   BTCreate(&tbut[T_BOK], pcdW, TWIDE-140-1, THIGH-10-BUTTH-1, 60, BUTTH,
+-     "Ok", infofg, infobg, hicol, locol);
++          "Ok", infofg, infobg, hicol, locol);
+ 
+   BTCreate(&tbut[T_BCANC], pcdW, TWIDE-70-1, THIGH-10-BUTTH-1, 60, BUTTH,
+-     "Cancel", infofg, infobg, hicol, locol);
++          "Cancel", infofg, infobg, hicol, locol);
+ 
+   y = 55;
+   resnRB = RBCreate(NULL, pcdW, 36, y,   "192*128   Base/16",
+@@ -676,7 +676,7 @@ int vis;
+ {
+   if (vis) {
+     CenterMapWindow(pcdW, tbut[T_BOK].x + tbut[T_BOK].w/2,
+-        tbut[T_BOK].y + tbut[T_BOK].h/2, TWIDE, THIGH);
++                   tbut[T_BOK].y + tbut[T_BOK].h/2, TWIDE, THIGH);
+   }
+   else     XUnmapWindow(theDisp, pcdW);
+   pcdUp = vis;
+@@ -729,12 +729,12 @@ XEvent *xev;
+ 
+     if (e->window == pcdW) {
+       if (stlen) {
+-  if (buf[0] == '\r' || buf[0] == '\n') { /* enter */
+-    FakeButtonPress(&tbut[T_BOK]);
+-  }
+-  else if (buf[0] == '\033') {            /* ESC */
+-    FakeButtonPress(&tbut[T_BCANC]);
+-  }
++        if (buf[0] == '\r' || buf[0] == '\n') { /* enter */
++          FakeButtonPress(&tbut[T_BOK]);
++        }
++        else if (buf[0] == '\033') {            /* ESC */
++          FakeButtonPress(&tbut[T_BCANC]);
++        }
+       }
+     }
+     else rv = 0;
+diff --git a/xvpic2.c b/xvpic2.c
+index 2b31845..b04b23b 100644
+--- a/xvpic2.c
++++ b/xvpic2.c
+@@ -3223,7 +3223,7 @@ static RBUTT *depthRB;
+ /***************************************************/
+ void CreatePIC2W()
+ {
+-    int	     y;
++    int y;
+ 
+     pic2W = CreateWindow("xv pic2", "XVpic2", NULL,
+ 			TWIDE, THIGH, infofg, infobg, 0);
+diff --git a/xvpng.c b/xvpng.c
+index eff95c4..cd99367 100644
+--- a/xvpng.c
++++ b/xvpng.c
+@@ -122,7 +122,7 @@ png_default_write_data(png_structp png_ptr, png_bytep data, png_size_t length)
+ void CreatePNGW()
+ {
+   pngW = CreateWindow("xv png", "XVPNG", NULL,
+-                      PWIDE, PHIGH, infofg, infobg, 0);
++                      PWIDE, PHIGH, infofg, infobg, FALSE);
+   if (!pngW) FatalError("can't create PNG window!");
+ 
+   XSelectInput(theDisp, pngW, ExposureMask | ButtonPressMask | KeyPressMask);
+diff --git a/xvpopup.c b/xvpopup.c
+index ef11b20..8ba0114 100644
+--- a/xvpopup.c
++++ b/xvpopup.c
+@@ -3,7 +3,11 @@
+  *
+  * callable functions:
+  *
+- *   CenterMapWindow(win,x,y)  -  maps and centers a window around the mouse
++ *   SetMinSizeWindow(win,w,h) -  set minimum allowed size
++ *   SetMaxSizeWindow(win,w,h) -  set maximum allowed size
++ *   SetSizeIncWindow(win,dx,dy) -  set resize increment stepping
++ *   CenterMapFlexWindow(win,x,y,keep) -  maps and centers a window around the mouse
++ *   CenterMapWindow(win,x,y) -  maps and centers a window around the mouse
+  *   PopUp(str,...)        -  maps, sets up popW
+  *   ErrPopUp(str,str)     -  maps, sets up popW
+  *   GetStrPopUp(...)      -  opens a 1-line, editable text popup window
+@@ -136,11 +140,59 @@ extern XtAppContext context;
+ 
+ 
+ /***************************************************/
+-void CenterMapWindow(win, dx, dy, w, h)
+-     Window win;
+-     int    dx, dy, w, h;
++void SetMinSizeWindow(win, w, h)
++    Window win;
++    int    w, h;
+ {
+   XSizeHints hints;
++
++  if (!XGetNormalHints(theDisp, win, &hints)) hints.flags = 0;
++  hints.min_width  = w;
++  hints.min_height = h;
++  hints.flags |= PMinSize;
++  XSetNormalHints(theDisp, win, &hints);
++}
++
++
++/***************************************************/
++void SetMaxSizeWindow(win, w, h)
++    Window win;
++    int    w, h;
++{
++  XSizeHints hints;
++
++  if (!XGetNormalHints(theDisp, win, &hints)) hints.flags = 0;
++  hints.max_width  = w;
++  hints.max_height = h;
++  hints.flags |= PMaxSize;
++  XSetNormalHints(theDisp, win, &hints);
++}
++
++
++/***************************************************/
++void SetSizeIncWindow(win, dx, dy)
++    Window win;
++    int    dx, dy;
++{
++  XSizeHints hints;
++
++  if (!XGetNormalHints(theDisp, win, &hints)) hints.flags = 0;
++  hints.base_width  = 0;
++  hints.base_height = 0;
++  hints.flags |= PBaseSize;
++  hints.width_inc  = dx;
++  hints.height_inc = dy;
++  hints.flags |= PResizeInc;
++  XSetNormalHints(theDisp, win, &hints);
++}
++
++
++/***************************************************/
++void CenterMapFlexWindow(win, dx, dy, w, h, keepsize)
++    Window win;
++    int    dx, dy, w, h, keepsize;
++{
++  XSizeHints   hints;
+   Window       rW,cW;
+   int          rx,ry,x,y,wx,wy;
+   unsigned int mask;
+@@ -159,7 +211,7 @@ void CenterMapWindow(win, dx, dy, w, h)
+     if (wy + h > dispHIGH) wy = dispHIGH - h;
+   }
+ 
+-
++#if 0
+   if (winCtrPosKludge) {
+     wx -= (p_offx + ch_offx);
+     wy -= (p_offy + ch_offy);
+@@ -168,24 +220,40 @@ void CenterMapWindow(win, dx, dy, w, h)
+     wx -= (ch_offx);
+     wy -= (ch_offy);
+   }
++#endif
++
++  /* do this first so the WM can override us */
++  XMoveWindow(theDisp, win, wx, wy);
+ 
+   if (!XGetNormalHints(theDisp, win, &hints)) hints.flags = 0;
+-  hints.width  = hints.min_width  = hints.max_width  = w;
+-  hints.height = hints.min_height = hints.max_height = h;
+   hints.x = wx;  hints.y = wy;
+-  hints.flags  |= (USSize | PMinSize | PMaxSize | USPosition);
++  hints.width = w;
++  hints.height = h;
++  hints.flags |= PPosition | PSize;
++  if (keepsize) {
++    hints.min_width  = hints.max_width  = w;
++    hints.min_height = hints.max_height = h;
++    hints.flags |= PMinSize | PMaxSize;
++  }
+   XSetNormalHints(theDisp, win, &hints);
+ 
+-  XMoveWindow(theDisp, win, wx, wy);
+   XMapRaised(theDisp, win);
+ }
+ 
+ 
++void CenterMapWindow(win, dx, dy, w, h)
++    Window win;
++    int    dx, dy, w, h;
++{
++  CenterMapFlexWindow(win, dx, dy, w, h, TRUE);
++}
++
++
+ /***************************************************/
+ int PopUp(txt, labels, n)
+-     const char *txt;
+-     const char *labels[];
+-     int         n;
++    const char *txt;
++    const char *labels[];
++    int         n;
+ {
+   return doPopUp(txt, labels, n, ISPOPUP, "xv confirm");
+ }
+@@ -193,10 +261,10 @@ int PopUp(txt, labels, n)
+ 
+ /***************************************************/
+ static int doPopUp(txt, labels, n, poptyp, wname)
+-     const char *txt;
+-     const char *labels[];
+-     int         n, poptyp;
+-     const char *wname;
++    const char *txt;
++    const char *labels[];
++    int         n, poptyp;
++    const char *wname;
+ {
+   int    i;
+   XEvent event;
+@@ -415,7 +483,7 @@ int GrabPopUp(pHide, pDelay)
+   changedGSBuf();      /* careful!  popW doesn't exist yet! */
+ 
+   /* window value gets filled in in doPopUp() */
+-  CBCreate(&ahideCB, (Window) NULL,
++  CBCreate(&ahideCB, (Window) None,
+ 	   PUWIDE-10-18-StringWidth(HIDESTR),
+ 	   gsy+2, HIDESTR, infofg, infobg, hicol, locol);
+   ahideCB.val = *pHide;
+@@ -868,7 +936,7 @@ static void TextRect(win, txt, x, y, w, h, fg)
+ static void createPUD()
+ {
+   popW = CreateWindow("xv confirm", "XVconfirm", "+0+0",
+-		      PUWIDE, PUHIGH, infofg, infobg, 0);
++		      PUWIDE, PUHIGH, infofg, infobg, FALSE);
+   if (!popW) FatalError("can't create popup window!");
+ 
+   XSelectInput(theDisp, popW, ExposureMask | ButtonPressMask | KeyPressMask
+diff --git a/xvps.c b/xvps.c
+index 265ec92..1592480 100644
+--- a/xvps.c
++++ b/xvps.c
+@@ -127,7 +127,7 @@ void CreatePSD(geom)
+ char *geom;
+ {
+   psW = CreateWindow("xv postscript", "XVps", geom,
+-		     PSWIDE, PSHIGH, infofg, infobg, 0);
++		     PSWIDE, PSHIGH, infofg, infobg, FALSE);
+   if (!psW) FatalError("can't create postscript window!");
+ 
+   pageF = XCreateSimpleWindow(theDisp, psW, 20,30, PMAX+1,PMAX+1,
+diff --git a/xvroot.c b/xvroot.c
+index 47d7b33..bbadc3e 100644
+--- a/xvroot.c
++++ b/xvroot.c
+@@ -309,7 +309,7 @@ void SaveRootInfo()
+      is avoided */
+ 
+   Atom          prop;
+-  static Pixmap riPix = (Pixmap) NULL;
++  static Pixmap riPix = (Pixmap) None;
+ 
+   if ( !(theVisual->class & 1)) return;  /* no colormap to worry about */
+   if (riPix) return;                     /* it's already been saved once */
+diff --git a/xvscrl.c b/xvscrl.c
+index 953eeaa..b7045a9 100644
+--- a/xvscrl.c
++++ b/xvscrl.c
+@@ -41,6 +41,8 @@ static int    pixmaps_built=0;   /* true if pixmaps created already */
+ #define DNPAGE 3
+ #define THUMB  4
+ 
++#define THUMB_SIZE 19
++
+ #define SCRLWAIT 80   /* milliseconds to wait between scrolls */
+ 
+ /* local functions */
+@@ -52,12 +54,12 @@ static void drawThumb   PARM((SCRL *));
+ /***************************************************/
+ void SCCreate(sp, parent, x, y, vert, len, minv, maxv, curv, page,
+ 	          fg, bg, hi, lo, func)
+-SCRL         *sp;
+-Window        parent;
+-int           x,y,vert,len,minv,maxv,curv,page;
+-unsigned long fg,bg,hi,lo;
++    SCRL         *sp;
++    Window        parent;
++    int           x,y,vert,len,minv,maxv,curv,page;
++    unsigned long fg,bg,hi,lo;
+ 
+-void          (*func)PARM((int, SCRL *));
++    void          (*func)PARM((int, SCRL *));
+ {
+ 
+ 
+@@ -87,7 +89,7 @@ void          (*func)PARM((int, SCRL *));
+   sp->hi   = hi;
+   sp->lo   = lo;
+   sp->uplit = sp->dnlit = 0;
+-  sp->tsize  =  19;
++  sp->tsize  =  THUMB_SIZE;
+ 
+   if (vert) {
+     sp->win = XCreateSimpleWindow(theDisp,parent,x,y,
+@@ -105,8 +107,8 @@ void          (*func)PARM((int, SCRL *));
+ 
+   if (!sp->win) FatalError("can't create scrollbar window");
+ 
+-  sp->tmin   =  sp->tsize+1;
+-  sp->tmax   =  len - (sp->tsize+1) - sp->tsize;
++  sp->tmin   = sp->tsize+1;
++  sp->tmax   = len - (sp->tsize+1) - sp->tsize;
+ 
+   sp->drawobj = func;
+ 
+@@ -117,20 +119,28 @@ void          (*func)PARM((int, SCRL *));
+ 
+ /***************************************************/
+ void SCChange(sp, x, y, vert, len, minv, maxv, curv, page)
+-SCRL         *sp;
+-int           x,y,vert,len,minv,maxv,curv,page;
++    SCRL         *sp;
++    int           x,y,vert,len,minv,maxv,curv,page;
+ {
+   sp->vert = vert;
+   sp->len  = len;
+   sp->uplit = sp->dnlit = 0;
+ 
+-  if (vert) XMoveResizeWindow(theDisp, sp->win, x,y,
++  if (vert) {
++    XMoveResizeWindow(theDisp, sp->win, x,y,
+ 			      (u_int) sp->tsize,(u_int) len);
+-  else      XMoveResizeWindow(theDisp, sp->win, x,y,
++    sp->w = sp->tsize;
++    sp->h = len;
++  }
++  else {
++    XMoveResizeWindow(theDisp, sp->win, x,y,
+ 			      (u_int) len, (u_int) sp->tsize);
++    sp->w = len;
++    sp->h = sp->tsize;
++  }
+ 
+-  sp->tmin   =  sp->tsize+1;
+-  sp->tmax   =  len - (sp->tsize+1) - sp->tsize;
++  sp->tmin = sp->tsize+1;
++  sp->tmax = len - (sp->tsize+1) - sp->tsize;
+ 
+   SCSetRange(sp, minv, maxv, curv, page);
+ }
+@@ -143,7 +153,7 @@ void SCSetRange(sp, minv, maxv, curv, page)
+ {
+   if (maxv<minv) maxv=minv;
+   sp->min = minv;    sp->max = maxv;    sp->page = page;
+-  sp->active =  (minv < maxv);
++  sp->active = (minv < maxv);
+ 
+   /* adjust scroll bar background */
+   if (sp->active) {
+diff --git a/xvselect.c b/xvselect.c
+new file mode 100644
+index 0000000..2714f54
+--- /dev/null
++++ b/xvselect.c
+@@ -0,0 +1,364 @@
++/*
++ * Support for reading basic STRING selections without using Xt.
++ * Copyright 2003-2005,2012 Ross Combs
++ * This file is dual-licensed: the GPL (version 2 or later) and the MIT license.
++ *
++ * The MIT license:
++ * Permission is hereby granted, free of charge, to any person obtaining a copy
++ * of this software and associated documentation files (the "Software"), to deal
++ * in the Software without restriction, including without limitation the rights
++ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++ * copies of the Software, and to permit persons to whom the Software is
++ * furnished to do so, subject to the following conditions:
++ * The above copyright notice and this permission notice shall be included in
++ * all copies or substantial portions of the Software.
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++ * THE SOFTWARE.
++ */
++#include "xv.h"
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++
++struct test_param
++{
++    Atom selection;
++    Window requestor;
++};
++
++static Atom clipboard=None;
++
++
++static Bool TestForNotify(Display *dpy, XEvent *ev, XPointer arg)
++{
++    struct test_param const *param = (struct test_param const *)arg;
++
++    if (ev->type==SelectionNotify &&
++        ev->xselection.requestor==param->requestor &&
++        ev->xselection.selection==param->selection)
++        return True;
++
++    if (ev->type==SelectionRequest &&
++        ev->xselectionrequest.selection==param->selection)
++        return True;
++
++    return False;
++}
++
++
++static void *ReadSelection(Display *dpy, Atom selection, Atom targetformat, Window reqw, Atom destprop, Atom *datatype, int *len, int timeout)
++{
++    if (reqw == None)
++        return NULL;
++
++    if (destprop == None)
++        return NULL;
++
++    if (XConvertSelection(dpy, selection, targetformat, destprop, reqw, CurrentTime) == False)
++    {
++        if (DEBUG) fprintf(stderr, "XConvertSelection() failed\n");
++        return NULL;
++    }
++
++    {
++        XEvent ev;
++        struct test_param param;
++        param.requestor = reqw;
++        param.selection = selection;
++        for (;;)
++        {
++            while (XCheckIfEvent(dpy, &ev, TestForNotify, (XPointer)&param)==False)
++            {
++                fd_set read_fds;
++                struct timeval tv;
++                int fd;
++
++                fd = ConnectionNumber(dpy);
++                FD_ZERO(&read_fds);
++                FD_SET(fd, &read_fds);
++                tv.tv_sec = timeout;
++                tv.tv_usec = 0;
++                if (select(fd+1, &read_fds, NULL, NULL, &tv)==0)
++                {
++                    if (DEBUG) fprintf(stderr, "timeout waiting for selection notification\n");
++                    return NULL;
++                }
++            }
++
++            if (ev.type==SelectionRequest)
++            {
++              XSelectionRequestEvent const *xsrevt = &ev.xselectionrequest;
++              char const *text;
++
++              if (xsrevt->owner == dirW) {
++                if (xsrevt->target == XA_STRING)
++                  text = TextOfSelection(xsrevt->selection);
++                else
++                  text = NULL; /* we don't handle any other format */
++              } else {
++                text = NULL; /* we can't handle other windows outside of the main loop */
++              }
++
++              SendSelection(xsrevt->selection, xsrevt->requestor, xsrevt->property, xsrevt->target, xsrevt->time, text);
++            }
++
++            else if (ev.type==SelectionNotify)
++            {
++                if (ev.xselection.requestor != reqw)
++                    continue;
++                if (ev.xselection.selection != selection)
++                    continue;
++                if (ev.xselection.property == None)
++                {
++                    if (DEBUG) fprintf(stderr, "notification property is None; conversion failed\n");
++                    return NULL;
++                }
++                break;
++            }
++        }
++    }
++
++    {
++        int format;
++        Atom type;
++        unsigned long nitems, bytes_after;
++        unsigned long length;
++        unsigned char *rawbytes;
++        void *data;
++
++        /* get the size first so we can ask for it all in one chunk */
++        nitems = 0UL;
++        rawbytes = NULL;
++        if (XGetWindowProperty(dpy, reqw, destprop, 0L, 0L,
++                               False, AnyPropertyType,
++                               &type, &format, &nitems, &bytes_after,
++                               &rawbytes)!=Success)
++        {
++            if (rawbytes)
++                XFree(rawbytes);
++            XDeleteProperty(dpy, reqw, destprop);
++            return NULL;
++        }
++        if (rawbytes)
++            XFree(rawbytes);
++
++        /* rounding up should be ok because this is the maximum length we want */
++        length = (bytes_after+3UL)/4UL; /* convert to next multiple of 32 bits */
++        nitems = 0UL;
++        rawbytes = NULL;
++        if (XGetWindowProperty(dpy, reqw, destprop, 0L, length,
++                               False, AnyPropertyType, &type,
++                               &format, &nitems, &bytes_after,
++                               &rawbytes)!=Success || nitems<1UL || !rawbytes)
++        {
++            if (rawbytes)
++                XFree(rawbytes);
++            XDeleteProperty(dpy, reqw, destprop);
++            return NULL;
++        }
++
++        /* sadly we have to have this ugly hack because Xlib lies about the format of longs
++         * (Time, Atoms, Integers, etc.).  On 64 bit platforms it uses 64 bits in the
++         * interface and does the right thing internally, but still reports 32 bits for the
++         * format.
++         */
++        if (format==32 && sizeof(long)>4)
++            format *= sizeof(long)/4;
++        length = (nitems*format)/8UL; /* convert to multiple of 8 bits */
++
++        /* FIXME: for really large data, we would have to use a loop and incremental transfers */
++        XDeleteProperty(dpy, reqw, destprop);
++        if (!(data = malloc(length+1UL)))
++        {
++            XFree(rawbytes);
++            return NULL;
++        }
++        memcpy(data, rawbytes, length+1UL); /* copy the extra NUL byte as well so it can be treated as a string */
++        XFree(rawbytes);
++        *datatype = type;
++        *len = (int)length;
++        return data;
++    }
++}
++
++
++static char *ReadTextSelection(Display *dpy, Atom selection, int timeout)
++{
++    static Window reqw=None;
++    static Atom destprop=None;
++    int len;
++    Atom datatype;
++    char *text;
++    len = 0;
++    datatype = None;
++
++    if (reqw == None)
++    {
++        XSetWindowAttributes attr;
++        unsigned long valuemask;
++        attr.event_mask = NoEventMask; /* we get the selection notification no matter what */
++        valuemask = CWEventMask;
++        attr.override_redirect = True;
++        valuemask |= CWOverrideRedirect;
++        attr.backing_store = NotUseful;
++        valuemask |= CWBackingStore;
++        attr.save_under = False;
++        valuemask |= CWSaveUnder;
++        attr.background_pixmap = None;
++        valuemask |= CWBackPixmap;
++        attr.win_gravity = StaticGravity;
++        valuemask |= CWWinGravity;
++        attr.bit_gravity = StaticGravity;
++        valuemask |= CWBitGravity;
++        if ((reqw = XCreateWindow(dpy, DefaultRootWindow(dpy),
++                                  -1, -1, 1U, 1U, 0U,
++                                  CopyFromParent, InputOutput, CopyFromParent,
++                                  valuemask, &attr))==None)
++            return NULL;
++        XStoreName(dpy, reqw, "xv selection reader");
++    }
++
++    if (destprop == None)
++        if ((destprop = XInternAtom(dpy, "READ", False)) == None)
++            return NULL;
++
++    /* FIXME: sorry: this implementation is incomplete:
++     *   no format negotiation
++     *   no handling of COMPOUND_TEXT or UTF8_STRING, only basic STRING
++     *   no handling of incremental transfers
++     */
++    text = ReadSelection(dpy, selection, XA_STRING, reqw, destprop, &datatype, &len, timeout);
++
++    return text;
++}
++
++
++extern char *GetClipboardText(void)
++{
++    char *text;
++
++    if (clipboard == None)
++        if ((clipboard = XInternAtom(theDisp, "CLIPBOARD", False)) == None)
++            return NULL;
++
++    text = ReadTextSelection(theDisp, clipboard, 3);
++    if (!text)
++        text = ReadTextSelection(theDisp, XA_PRIMARY, 3);
++    if (!text)
++        if (DEBUG) fprintf(stderr, "failed to read CLIPBOARD and PRIMARY selections\n");
++
++    return text;
++}
++
++
++extern char *GetPrimaryText(void)
++{
++    char *text;
++
++    text = ReadTextSelection(theDisp, XA_PRIMARY, 3);
++    if (!text)
++        if (DEBUG) fprintf(stderr, "failed to read PRIMARY selection\n");
++
++    return text;
++}
++
++
++static char *clipboard_text=NULL;
++static char *primary_text=NULL;
++
++
++extern int SetClipboardText(Window w, char const *text, int len)
++{
++    char *newtext;
++
++    if (clipboard == None)
++        if ((clipboard = XInternAtom(theDisp, "CLIPBOARD", False)) == None)
++            return 0;
++
++    if (!(newtext = strdup(text)))
++        return 0;
++    newtext[len] = '\0';
++
++    if (XSetSelectionOwner(theDisp, clipboard, w, CurrentTime) == False)
++    {
++        free(newtext);
++        if (DEBUG) fprintf(stderr, "failed to set CLIPBOARD selection\n");
++        return 0;
++    }
++
++    if (clipboard_text) free(clipboard_text);
++    clipboard_text = newtext;
++
++    XSync(theDisp, False);
++
++    return 1;
++}
++
++
++extern int SetPrimaryText(Window w, char const *text, int len)
++{
++    char *newtext;
++
++    if (!(newtext = strdup(text)))
++        return 0;
++    newtext[len] = '\0';
++
++    if (XSetSelectionOwner(theDisp, XA_PRIMARY, w, CurrentTime) == False)
++    {
++        free(newtext);
++        if (DEBUG) fprintf(stderr, "failed to set PRIMARY selection\n");
++        return 0;
++    }
++
++    if (primary_text) free(primary_text);
++    primary_text = newtext;
++
++    XSync(theDisp, False);
++
++    return 1;
++}
++
++
++extern char const *TextOfSelection(Atom selection)
++{
++    if (selection == XA_PRIMARY)
++        return primary_text;
++
++    if (clipboard == None)
++        if ((clipboard = XInternAtom(theDisp, "CLIPBOARD", False)) == None)
++            return NULL;
++
++    if (selection == clipboard)
++        return clipboard_text;
++
++    return NULL;
++}
++
++
++extern int ReleaseSelection(Atom selection)
++{
++    if (selection == XA_PRIMARY) {
++        free(primary_text);
++        primary_text = NULL;
++        return 1;
++    }
++
++    if (clipboard == None)
++        if ((clipboard = XInternAtom(theDisp, "CLIPBOARD", False)) == None)
++            return 0;
++
++    if (selection == clipboard) {
++        free(clipboard_text);
++        clipboard_text = NULL;
++        return 1;
++    }
++
++    return 0;
++}
++
+diff --git a/xvtext.c b/xvtext.c
+index 4e6d87c..255760b 100644
+--- a/xvtext.c
++++ b/xvtext.c
+@@ -23,6 +23,9 @@
+ #include "xvml.h"
+ #endif
+ 
++#define MIN_TXTWIDE 380
++#define MIN_TXTHIGH 200
++
+ #define BUTTW1 80
+ #define BUTTW2 60
+ #define BUTTW3 110
+@@ -65,7 +68,7 @@ struct coding_spec {
+ /* data needed per text window */
+ typedef struct {  Window win, textW;
+ 		  int    vis, wasvis;
+-		  const char  *text;       /* text to be displayed */
++		  const char *text;        /* text to be displayed */
+ 		  int    freeonclose;      /* free text when closing win */
+ 		  int    textlen;          /* length of text */
+ 		  char   title[TITLELEN];  /* name of file being displayed */
+@@ -197,7 +200,6 @@ void CreateTextWins(geom, cmtgeom)
+      const char *geom, *cmtgeom;
+ {
+   int                   i, defwide, defhigh, cmthigh;
+-  XSizeHints            hints;
+   XSetWindowAttributes  xswa;
+   TVINFO               *tv;
+ #ifdef TV_MULTILINGUAL
+@@ -254,7 +256,7 @@ void CreateTextWins(geom, cmtgeom)
+ 
+   /* creates *all* textview windows at once */
+ 
+-  for (i=0; i<MAXTVWIN; i++) tinfo[i].win = (Window) NULL;
++  for (i=0; i<MAXTVWIN; i++) tinfo[i].win = (Window) None;
+ 
+   for (i=0; i<MAXTVWIN; i++) {
+     tv = &tinfo[i];
+@@ -272,8 +274,9 @@ void CreateTextWins(geom, cmtgeom)
+ 			   (i<CMTWIN) ? geom : cmtgeom,
+ 			   defwide,
+ 			   (i<CMTWIN) ? defhigh : cmthigh,
+-			   infofg, infobg, 1);
++			   infofg, infobg, TRUE);
+     if (!tv->win) FatalError("can't create textview window!");
++    SetMinSizeWindow(tv->win, MIN_TXTWIDE, MIN_TXTHIGH);
+ 
+     haveWindows = 1;
+     tv->vis = tv->wasvis = 0;
+@@ -287,22 +290,12 @@ void CreateTextWins(geom, cmtgeom)
+ 				     1,infofg,infobg);
+     if (!tv->textW) FatalError("can't create textview text window!");
+ 
+-    SCCreate(&(tv->vscrl), tv->win, 0,0, 1,100, 0,0,0,0,
++    SCCreate(&tv->vscrl, tv->win, 0,0, 1,100, 0,0,0,0,
+ 	     infofg, infobg, hicol, locol, drawTextW);
+ 
+-    SCCreate(&(tv->hscrl), tv->win, 0,0, 0,100, 0,0,0,0,
++    SCCreate(&tv->hscrl, tv->win, 0,0, 0,100, 0,0,0,0,
+ 	     infofg, infobg, hicol, locol, drawTextW);
+ 
+-    if (XGetNormalHints(theDisp, tv->win, &hints))
+-      hints.flags |= PMinSize;
+-    else
+-      hints.flags = PMinSize;
+-
+-    hints.min_width  = 380;
+-    hints.min_height = 200;
+-    XSetNormalHints(theDisp, tv->win, &hints);
+-
+-
+ #ifdef BACKING_STORE
+     xswa.backing_store = WhenMapped;
+     XChangeWindowAttributes(theDisp, tv->textW, CWBackingStore, &xswa);
+@@ -719,7 +712,7 @@ static int tvChkEvent(tv, xev)
+ 
+   rv = 1;
+ 
+-  if (!hasBeenSized) return 0;  /* ignore evrythng until we get 1st Resize */
++  if (!hasBeenSized) return 0;  /* ignore everythng until we get 1st Resize */
+ 
+   if (xev->type == Expose) {
+     int x,y,w,h;
+@@ -2024,6 +2017,12 @@ void ShowKeyHelp()
+   LC("  shift        + Button2 - 'drag-and-drop' cut and paste, constrain");
+   LC("          ctrl + Button2 - 'drag-and-drop' copy and paste");
+   LC("  shift + ctrl + Button2 - 'drag-and-drop' copy and paste, constrain");
++  LC("  ");
++  LC("Part 1b:  Mouse Usage in File Selection Window");
++  LC("----------------------------------------------");
++  LC("                 Button1 - move text insertion point, highlight text");
++  LC("                 Button2 - paste primary selection into text");
++  LC("    double-click Button1 - highlight entire filename");
+   LC("");
+   LC("");
+   LC("");
+@@ -2049,10 +2048,10 @@ void ShowKeyHelp()
+   LC("  'q' or");
+   LC("  ctrl+'q'      - 'Quit' command");
+   LC("");
+-  LC("  meta+'x'      - 'cut' command");
+-  LC("  meta+'c'      - 'copy' command");
+-  LC("  meta+'v'      - 'paste' command");
+-  LC("  meta+'d'      - 'clear' command");
++  LC("  meta+'x'      - 'cut' image selection to clipboard");
++  LC("  meta+'c'      - 'copy' image selection to clipboard");
++  LC("  meta+'v'      - 'paste' image selection from clipboard");
++  LC("  meta+'d'      - 'delete' image selection");
+   LC("");
+   LC("  'n'           - reset image to normal (unexpanded) size");
+   LC("  'm'           - maximum image size");
+@@ -2064,7 +2063,7 @@ void ShowKeyHelp()
+   LC("  'S'           - set image to specified size/expansion");
+   LC("  'a'           - reset image to normal aspect ratio");
+   LC("  '4'           - make image have a 4x3 width/height ratio");
+-  LC("  'I'           - round image size to integer expand/compres ratios");
++  LC("  'I'           - round image size to integer expand/compress ratios");
+   LC("");
+   LC("  't'           - turn image 90 degrees clockwise");
+   LC("  'T'           - turn image 90 degrees counter-clockwise");
+@@ -2119,10 +2118,10 @@ void ShowKeyHelp()
+   LC("---------------------------");
+   LC("The following keys can be used *only* inside the image window.");
+   LC("");
+-  LC("  ctrl + Up     - crops 1 pixel off the bottom of the image");
+-  LC("  ctrl + Down   - crops 1 pixel off the top of the image");
+-  LC("  ctrl + Left   - crops 1 pixel off the right side of the image");
+-  LC("  ctrl + Right  - crops 1 pixel off the left side of the image");
++  LC("  ctrl+Up       - crops 1 pixel off the bottom of the image");
++  LC("  ctrl+Down     - crops 1 pixel off the top of the image");
++  LC("  ctrl+Left     - crops 1 pixel off the right side of the image");
++  LC("  ctrl+Right    - crops 1 pixel off the left side of the image");
+   LC("");
+   LC("  If you're viewing a multi-page document:");
+   LC("  'p'           -  opens a 'go to page #' dialog box");
+@@ -2169,6 +2168,28 @@ void ShowKeyHelp()
+   LC("  Space         - load next file");
+   LC("  shift+Space   - load next file, keeping previous file(s) selected");
+   LC("  Backspace     - load previous file");
++  LC("");
++  LC("");
++  LC("Part 2c:  File Selection Window Keys");
++  LC("------------------------------------");
++  LC("The following keys can be used only in the file load/save window.");
++  LC("");
++  LC("  meta+'a'       - select all filename text");
++  LC("  meta+'d'       - delete selected filename text");
++  LC("  meta+'x'       - cut selected filename text to clipboard");
++  LC("  meta+'c'       - copy selected filename text to clipboard");
++  LC("  meta+'v'        - paste text from clipboard into filename");
++  LC("  Tab            - autocomplete filename");
++  LC("  Up             - highlight previous filename in list");
++  LC("  Down           - highlight next filename in list");
++  LC("  PageUp         - scroll up one screenful in list");
++  LC("  PageDown       - scroll down one screenful in list");
++  LC("  Home, or");
++  LC("  shift+PageUp   - scroll to top of list");
++  LC("  End, or");
++  LC("  shift+PageDown - scroll to bottom of list");
++  LC("  Esc            - close window");
++  LC("  Return         - load/save file from filename text");
+ 
+ #undef LC
+   OpenTextView(keyhelp, (int) strlen(keyhelp), "XV Help", 0);
+@@ -2225,6 +2246,7 @@ static char *(*cvtrtab[])PARM((char *, int, int *)) = {
+     sjis_to_jis,
+ };
+ 
++
+ static void createCsWins(geom)
+     const char *geom;
+ {
+@@ -2242,7 +2264,7 @@ static void createCsWins(geom)
+ 	cs->tv = tv;
+ 	sprintf(nam, "XVcs%d", i);
+ 	cs->win = CreateWindow("xv codeset", nam, geom,
+-			       CSWIDE, CSHIGH, infofg, infobg, 0);
++			       CSWIDE, CSHIGH, infofg, infobg, FALSE);
+ 	if (!cs->win) FatalError("couldn't create 'charset' window!");
+ #ifdef BACKING_STORE
+ 	XChangeWindowAttributes(theDisp, cs->win, CWBackingStore, &xswa);
+@@ -2269,7 +2291,7 @@ static void createCsWins(geom)
+ 	    LSCreate(&cs->ls[i], cs->win, x + 15, y + LINEHIGH,
+ 			200, LINEHIGH * 5, 5,
+ 			regs, nregs + 2,
+-			infofg, infobg, hicol, locol, csLsRedraw, 0, 0);
++			infofg, infobg, hicol, locol, csLsRedraw, FALSE, FALSE);
+ 	    cs->ls[i].selected = 0;
+ 	}
+ 
+diff --git a/xvtiff.c b/xvtiff.c
+index 0f83e28..3c4bf2e 100644
+--- a/xvtiff.c
++++ b/xvtiff.c
+@@ -8,6 +8,7 @@
+ #  define NEEDSARGS
+ #endif
+ 
++#include <string.h>
+ #include "xv.h"
+ 
+ #ifdef HAVE_TIFF
+diff --git a/xvtiffwr.c b/xvtiffwr.c
+index 217cc89..30edf52 100644
+--- a/xvtiffwr.c
++++ b/xvtiffwr.c
+@@ -236,10 +236,10 @@ static RBUTT *compRB;
+ /***************************************************/
+ void CreateTIFFW()
+ {
+-  int	     y;
++  int y;
+ 
+   tiffW = CreateWindow("xv tiff", "XVtiff", NULL,
+-		       TWIDE, THIGH, infofg, infobg, 0);
++		       TWIDE, THIGH, infofg, infobg, FALSE);
+   if (!tiffW) FatalError("can't create tiff window!");
+ 
+   XSelectInput(theDisp, tiffW, ExposureMask | ButtonPressMask | KeyPressMask);
+diff --git a/xvvd.c b/xvvd.c
+index e6acb90..f791ffe 100644
+--- a/xvvd.c
++++ b/xvvd.c
+@@ -874,6 +874,11 @@ char *name, *uncompname;
+     mktemp(uncompname);
+ #endif
+ 
++  /* FIXME: need to escape any special characters (spaces, dollar signs,
++   * backticks, quotes, etc., or use ticks) in the filename before calling system().
++   * Maybe one of the exec() variants would be better...
++   * (and why can't this be merged with the similar code in xv.c?)
++   */
+     sprintf(buf,"%s -c %s", UNCOMPRESS, fname);
+     SetISTR(ISTR_INFO, "Uncompressing Header '%s'...", BaseName(fname));
+     if ((pfp = popen_nul(buf, "r")) == NULL) {
+-- 
+2.17.1
+

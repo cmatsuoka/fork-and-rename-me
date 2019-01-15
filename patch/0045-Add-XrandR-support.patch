@@ -1,0 +1,192 @@
+From a84406cb73b2ffc26753e7a401cb4be9cbe9925d Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Tue, 2 May 2017 20:01:18 -0700
+Subject: [PATCH 45/68] Add XrandR support.
+
+This is from xv-20150913-rainer-m-canavan--xrandr-support--webp-support.dif
+
+Now the xv window is not limited to the size of e.g. the builtin screen
+of a notebook after one plugs in an external screen).
+---
+ Makefile  |  9 ++++++---
+ config.h  | 10 ++++++++++
+ xv.c      | 25 +++++++++++++++++++++++++
+ xv.h      |  5 +++++
+ xvevent.c | 25 +++++++++++++++++++++++--
+ 5 files changed, 69 insertions(+), 5 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index cc353ed..4fe3cdd 100644
+--- a/Makefile
++++ b/Makefile
+@@ -328,7 +328,10 @@ MGCSFXDIR = $(LIBDIR)
+ # Directory of default configuration file.
+ MGCSFX = -DMGCSFXDIR=\"$(MGCSFXDIR)\"
+ 
+-
++# If you don't have XRandR  includes and library, possibly because
++# your X11 is too old, *COMMENT OUT* the following lines:
++XRANDR    = -DDOXRANDR
++XRANDRLIB = -lXrandr
+ 
+ 
+ ################ END OF CONFIGURATION OPTIONS #################
+@@ -339,11 +342,11 @@ MGCSFX = -DMGCSFXDIR=\"$(MGCSFXDIR)\"
+ CFLAGS = $(CCOPTS) $(PNG) $(PNGINC) $(ZLIBINC) $(JPEG) $(JPEGINC) \
+ 	$(TIFF) $(TIFFINC) $(PDS) $(JP2K) $(JP2KINC) $(TVL10N) $(MGCSFX) \
+ 	$(UNIX) $(BSDTYPES) $(RAND) $(MALLOC) $(DXWM) $(MCHN) $(NODIRENT) \
+-	$(VPRINTF) $(TIMERS) -DDOCDIR=\"$(DOCDIR)\" \
++	$(VPRINTF) $(TIMERS) $(XRANDR) -DDOCDIR=\"$(DOCDIR)\" \
+ 	-DSYSCONFDIR=\"$(SYSCONFDIR)\" -DXVEXECPATH=\"$(LIBDIR)\"
+ 
+ ### remove -lm for BeOS:
+-LIBS = $(TIFFLIB) $(JPEGLIB) $(PNGLIB) $(ZLIBLIB) $(JP2KLIB) -L/usr/X11R6/lib -lX11 -lXt -lm
++LIBS = $(TIFFLIB) $(JPEGLIB) $(PNGLIB) $(ZLIBLIB) $(JP2KLIB) $(XRANDRLIB) -L/usr/X11R6/lib -lX11 -lXt -lm
+ #LIBS = $(TIFFLIB) $(JPEGLIB) $(PNGLIB) $(ZLIBLIB) $(JP2KLIB) -lX11 -lXt
+ 
+ OBJS = 	xv.o xvevent.o xvroot.o xvmisc.o xvimage.o xvcolor.o xvsmooth.o \
+diff --git a/config.h b/config.h
+index 512f068..cf18861 100644
+--- a/config.h
++++ b/config.h
+@@ -282,6 +282,16 @@
+ /* #  define TV_FONTSET "-*-fixed-medium-r-normal--%d-*" */
+ #endif /* TV_L10N */
+ 
++/***************************************************************************
++ * X11 Rotate And Resize Support
++ *
++ * if you want XV to adjust the max(pect) sizes to your current screen size
++ * and you have the XRandR headers and library installed
++ */
++
++#ifdef DOXRANDR
++#  define HAVE_XRR
++#endif
+ 
+ /***************************************************************************
+  * User definable filter support:
+diff --git a/xv.c b/xv.c
+index 38ed850..91e6338 100644
+--- a/xv.c
++++ b/xv.c
+@@ -140,6 +140,9 @@ static int  argcmp                   PARM((const char *, const char *,
+                                            int, int, int *));
+ static void add_filelist_to_namelist PARM((char *, char **, int *, int));
+ 
++#ifdef HAVE_XRR
++extern int RRevent_number, RRerror_number;
++#endif
+ 
+ /* formerly local vars in main, made local to this module when
+    parseResources() and parseCmdLine() were split out of main() */
+@@ -170,6 +173,10 @@ int main(argc, argv)
+   int    i;
+ #ifdef TV_L10N
+   int    j;
++#endif
++#ifdef HAVE_XRR
++  int major = -1, minor = -1;
++  int nScreens;
+ #endif
+   XColor ecdef;
+   Window rootReturn, parentReturn, *children;
+@@ -1036,8 +1043,26 @@ int main(argc, argv)
+   /* make std colormap, maybe */
+   ChangeCmapMode(colorMapMode, 0, 0);
+ 
++  /* Xrandr */
++#ifdef HAVE_XRR
++  if (!XRRQueryExtension(theDisp, &RRevent_number, &RRerror_number)) {
++    major = -1;
++  } else {
++    if (DEBUG) fprintf(stderr, "XRRQueryExtension: %d, %d\n", RRevent_number, RRerror_number);
++
++    if (!XRRQueryVersion(theDisp, &major, &minor)) {
++      if (DEBUG) fprintf(stderr, "XRRQueryVersion failed!\n");
++    } else {
++      if (DEBUG) fprintf(stderr, "XRRQueryVersion: %d, %d\n", major, minor);
++    }
+ 
++    nScreens = ScreenCount(theDisp);
+ 
++    for (i = 0; i < nScreens; i++) {
++      XRRSelectInput(theDisp, RootWindow(theDisp, i), RRScreenChangeNotifyMask);
++    }
++  }
++#endif
+ 
+   /* Do The Thing... */
+   mainLoop();
+diff --git a/xv.h b/xv.h
+index 93d0381..ee54aa9 100644
+--- a/xv.h
++++ b/xv.h
+@@ -222,6 +222,11 @@
+ #include <X11/Xatom.h>
+ #include <X11/Xmd.h>
+ 
++#ifdef HAVE_XRR
++#include <X11/Xproto.h>
++#include <X11/extensions/Xrandr.h>
++#endif
++
+ #ifdef TV_L10N
+ #  include <X11/Xlocale.h>
+ #endif
+diff --git a/xvevent.c b/xvevent.c
+index bdbcf3c..97d7d72 100644
+--- a/xvevent.c
++++ b/xvevent.c
+@@ -75,6 +75,10 @@ static void   annotatePic      PARM((void));
+ static int    debkludge_offx;
+ static int    debkludge_offy;
+ 
++#ifdef HAVE_XRR
++int RRevent_number = -1, RRerror_number = -1;
++#endif
++
+ #ifndef NOSIGNAL
+ static XtSignalId IdQuit = 0;
+ extern XtAppContext context;
+@@ -235,6 +239,10 @@ int HandleEvent(event, donep)
+ #ifdef HAVE_MGCSFX
+   static int wasMgcSfxUp=0;
+ #endif
++#ifdef HAVE_XRR
++  int screen;
++  XRRScreenChangeNotifyEvent *xrr_event;
++#endif
+ 
+   static int mainWKludge=0;  /* force first mainW expose after a mainW config
+ 				to redraw all of mainW */
+@@ -918,11 +926,24 @@ int HandleEvent(event, donep)
+     }
+     break;
+ 
+-
+-
+   default: break;		/* ignore unexpected events */
+   }  /* switch */
+ 
++#ifdef HAVE_XRR
++  if (event->type == RRevent_number + RRScreenChangeNotify) {
++    XRRUpdateConfiguration(event);
++    XSync (theDisp, False);
++    xrr_event = (XRRScreenChangeNotifyEvent *)event;
++
++    screen = XRRRootToScreen(theDisp, xrr_event->window);
++
++    dispWIDE = DisplayWidth(theDisp, screen);
++    dispHIGH = DisplayHeight(theDisp, screen);
++    maxWIDE = vrWIDE = dispWIDE;  maxHIGH = vrHIGH = dispHIGH;
++    HandleDispMode();
++  }
++#endif
++
+   frominterrupt = 0;
+   *donep = done;
+   return(retval);
+-- 
+2.17.1
+

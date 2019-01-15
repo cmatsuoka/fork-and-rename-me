@@ -1,0 +1,952 @@
+From 5682a07e761e92a947d2744c39a02ecdfa1894d5 Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Tue, 2 May 2017 20:34:45 -0700
+Subject: [PATCH 46/68] Add support for .webp image format.
+
+This is from xv-20150913-rainer-m-canavan--xrandr-support--webp-support.dif
+See https://developers.google.com/speed/webp/ and
+https://en.wikipedia.org/wiki/WebP for info on this format.
+---
+ Imakefile    |  19 ++-
+ Makefile     |  14 +-
+ bits/br_webp |  23 +++
+ xv.c         |  25 +++
+ xv.h         |  26 +++-
+ xvbrowse.c   |   7 +-
+ xvdir.c      |  31 +++-
+ xvevent.c    |  29 ++++
+ xvmisc.c     |   8 +
+ xvwebp.c     | 420 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ 10 files changed, 589 insertions(+), 13 deletions(-)
+ create mode 100644 bits/br_webp
+ create mode 100644 xvwebp.c
+
+diff --git a/Imakefile b/Imakefile
+index f1b51f7..40c488a 100644
+--- a/Imakefile
++++ b/Imakefile
+@@ -8,6 +8,10 @@
+  */
+ #define HaveJpeg
+ 
++/* if, for whatever reason, you're unable to get the WEBP library to compile
++ * on your machine, *COMMENT OUT* the following line
++ */
++#define HaveWEBP
+ 
+ /* if, for whatever reason, you're unable to get the TIFF library to compile
+  * on your machine, *COMMENT OUT* the following line
+@@ -116,9 +120,12 @@ MGCSFX = -DMGCSFXDIR=\"$(MGCSFXDIR)\"
+ 
+ /* This marks the end of the configuration parameters */
+ 
+-
+-
+-
++#ifdef HaveWEBP
++WEBP = -DDOWEBP
++WEBPDIR = /usr/
++LIBWEBP = $(WEBPDIR)/lib/libwebp.so
++WEBPINCLUDE = -I$(WEBPDIR)/include
++#endif
+ 
+ #ifdef HaveJpeg
+ JPEG = -DDOJPEG
+@@ -156,7 +163,7 @@ DEFINES= $(SCO) $(UNIX) $(NODIRENT) $(VPRINTF) $(TIMERS) \
+ 	$(HPUX7) $(JPEG) $(TIFF) $(PDS) $(DXWM) $(RAND) \
+ 	$(BACKING_STORE) $(BSDTYPES) $(SGI) $(MGCSFX)
+ 
+-INCLUDES = $(JPEGINCLUDE) $(TIFFINCLUDE)
++INCLUDES = $(JPEGINCLUDE) $(TIFFINCLUDE) $(WEBPINCLUDE)
+ 
+ SRCS1 =	xv.c xvevent.c xvroot.c xvmisc.c xvimage.c xvcolor.c xvsmooth.c \
+ 	xv24to8.c xvgif.c xvpm.c xvinfo.c xvctrl.c xvscrl.c xvalg.c \
+@@ -166,7 +173,7 @@ SRCS1 =	xv.c xvevent.c xvroot.c xvmisc.c xvimage.c xvcolor.c xvsmooth.c \
+ 	xvbrowse.c xvtext.c xvpcx.c xviff.c xvtarga.c xvxpm.c xvcut.c \
+ 	xvxwd.c xvfits.c xvpng.c xvzx.c xvwbmp.c xvpcd.c \
+ 	xvmag.c xvpic.c xvmaki.c xvpi.c xvpic2.c xvvd.c xvmgcsfx.c \
+-	xvml.c
++	xvml.c xvwebp.c
+ 
+ OBJS1 =	xv.o xvevent.o xvroot.o xvmisc.o xvimage.o xvcolor.o xvsmooth.o \
+ 	xv24to8.o xvgif.o xvpm.o xvinfo.o xvctrl.o xvscrl.o xvalg.o \
+@@ -176,7 +183,7 @@ OBJS1 =	xv.o xvevent.o xvroot.o xvmisc.o xvimage.o xvcolor.o xvsmooth.o \
+ 	xvbrowse.o xvtext.o xvpcx.o xviff.o xvtarga.o xvxpm.o xvcut.o \
+ 	xvxwd.o xvfits.o xvpng.o xvzx.o xvwbmp.o xvpcd.o \
+ 	xvmag.o xvpic.o xvmaki.o xvpi.o xvpic2.o xvvd.o xvmgcsfx.o \
+-	xvml.o
++	xvml.o xvwebp.o
+ 
+ SRCS2=	bggen.c
+ OBJS2=	bggen.o
+diff --git a/Makefile b/Makefile
+index 4fe3cdd..1d7f468 100644
+--- a/Makefile
++++ b/Makefile
+@@ -109,6 +109,14 @@ TIFFLIB = -L$(TIFFDIR)/lib -ltiff
+ #	( cd $(TIFFDIR) ; make CC='$(CC)' COPTS='$(CCOPTS) $(MCHN)' )
+ 
+ 
++#ifdef HaveWEBP
++WEBP = -DDOWEBP
++WEBPDIR = /usr/
++WEBPLIB = -L$(WEBPDIR)/lib -lwebp
++WEBPINC = -I$(WEBPDIR)/include
++#endif
++
++
+ ###
+ ### if, for whatever reason, you're unable to get the JPEG library to compile
+ ### on your machine, *COMMENT OUT* the following lines
+@@ -339,14 +347,14 @@ XRANDRLIB = -lXrandr
+ 
+ 
+ 
+-CFLAGS = $(CCOPTS) $(PNG) $(PNGINC) $(ZLIBINC) $(JPEG) $(JPEGINC) \
++CFLAGS = $(CCOPTS) $(PNG) $(PNGINC) $(ZLIBINC) $(JPEG) $(JPEGINC) $(WEBP) $(WEBPINC) \
+ 	$(TIFF) $(TIFFINC) $(PDS) $(JP2K) $(JP2KINC) $(TVL10N) $(MGCSFX) \
+ 	$(UNIX) $(BSDTYPES) $(RAND) $(MALLOC) $(DXWM) $(MCHN) $(NODIRENT) \
+ 	$(VPRINTF) $(TIMERS) $(XRANDR) -DDOCDIR=\"$(DOCDIR)\" \
+ 	-DSYSCONFDIR=\"$(SYSCONFDIR)\" -DXVEXECPATH=\"$(LIBDIR)\"
+ 
+ ### remove -lm for BeOS:
+-LIBS = $(TIFFLIB) $(JPEGLIB) $(PNGLIB) $(ZLIBLIB) $(JP2KLIB) $(XRANDRLIB) -L/usr/X11R6/lib -lX11 -lXt -lm
++LIBS = $(TIFFLIB) $(JPEGLIB) $(PNGLIB) $(ZLIBLIB) $(JP2KLIB) $(XRANDRLIB) $(WEBPLIB) -L/usr/X11R6/lib -lX11 -lXt -lm
+ #LIBS = $(TIFFLIB) $(JPEGLIB) $(PNGLIB) $(ZLIBLIB) $(JP2KLIB) -lX11 -lXt
+ 
+ OBJS = 	xv.o xvevent.o xvroot.o xvmisc.o xvimage.o xvcolor.o xvsmooth.o \
+@@ -357,7 +365,7 @@ OBJS = 	xv.o xvevent.o xvroot.o xvmisc.o xvimage.o xvcolor.o xvsmooth.o \
+ 	xvbrowse.o xvtext.o xvpcx.o xviff.o xvtarga.o xvxpm.o xvcut.o \
+ 	xvxwd.o xvfits.o xvpng.o xvzx.o xvwbmp.o xvpcd.o xvhips.o \
+ 	xvmag.o xvpic.o xvmaki.o xvpi.o xvpic2.o xvvd.o xvmgcsfx.o \
+-	xvml.o xvjp2k.o
++	xvml.o xvjp2k.o xvwebp.o
+ 
+ MISC = README INSTALL CHANGELOG IDEAS
+ 
+diff --git a/bits/br_webp b/bits/br_webp
+new file mode 100644
+index 0000000..0ea5d82
+--- /dev/null
++++ b/bits/br_webp
+@@ -0,0 +1,23 @@
++#define br_webp_width 48
++#define br_webp_height 48
++static char br_webp_bits[] = {
++ 0xe0,0xff,0xff,0xff,0x01,0x00,0x20,0x00,0x00,0x00,0x03,0x00,0x20,0x00,0x00,
++ 0x00,0x05,0x00,0x20,0x00,0x00,0x00,0x09,0x00,0x20,0x00,0x00,0x00,0x11,0x00,
++ 0x20,0x00,0x00,0x00,0x21,0x00,0x20,0x00,0x00,0x00,0x41,0x00,0x20,0x00,0x00,
++ 0x00,0x81,0x00,0x20,0x00,0x00,0x00,0x01,0x01,0x20,0x00,0x00,0x00,0xff,0x03,
++ 0x20,0x00,0x00,0x00,0x00,0x02,0x20,0x00,0x00,0x00,0x00,0x02,0x20,0x00,0x00,
++ 0x00,0x00,0x02,0x20,0xff,0xff,0xff,0x7f,0x02,0x20,0x00,0x00,0x00,0x00,0x02,
++ 0x20,0xff,0xff,0xff,0x7f,0x02,0x20,0x00,0x00,0x00,0x00,0x02,0x20,0x83,0x7d,
++ 0x3f,0x3f,0x02,0x20,0x83,0x7d,0x7f,0x7f,0x02,0x20,0x83,0x0d,0x63,0x63,0x02,
++ 0x20,0x93,0x0d,0x63,0x63,0x02,0x20,0x93,0x0d,0x63,0x63,0x02,0x20,0xbb,0x7d,
++ 0x7f,0x73,0x02,0x20,0xbb,0x7d,0x3f,0x3f,0x02,0x20,0xef,0x0d,0x63,0x1f,0x02,
++ 0x20,0xef,0x0d,0x63,0x03,0x02,0x20,0xc7,0x0d,0x63,0x03,0x02,0x20,0xc7,0x0d,
++ 0x63,0x03,0x02,0x20,0x83,0x7d,0x7f,0x03,0x02,0x20,0x83,0x7d,0x3f,0x03,0x02,
++ 0x20,0x00,0x00,0x00,0x00,0x02,0x20,0xff,0xff,0xff,0x7f,0x02,0x20,0x00,0x00,
++ 0x00,0x00,0x02,0x20,0xff,0xff,0xff,0x7f,0x02,0x20,0x00,0x00,0x00,0x00,0x02,
++ 0x20,0x00,0x00,0x00,0x00,0x02,0x20,0x00,0x00,0x00,0x00,0x02,0x20,0x00,0x00,
++ 0x00,0x00,0x02,0x20,0x00,0x00,0x00,0x00,0x02,0x20,0x00,0x00,0x00,0x00,0x02,
++ 0x20,0x00,0x00,0x00,0x00,0x02,0x20,0x00,0x00,0x00,0x00,0x02,0x20,0x00,0x00,
++ 0x00,0x00,0x02,0x20,0x00,0x00,0x00,0x00,0x02,0x20,0x00,0x00,0x00,0x00,0x02,
++ 0x20,0x00,0x00,0x00,0x00,0x02,0x20,0x00,0x00,0x00,0x00,0x02,0xe0,0xff,0xff,
++ 0xff,0xff,0x03};
+diff --git a/xv.c b/xv.c
+index 91e6338..db91af1 100644
+--- a/xv.c
++++ b/xv.c
+@@ -347,6 +347,10 @@ int main(argc, argv)
+   pngW = (Window) NULL;  pngUp = 0;
+ #endif
+ 
++#ifdef HAVE_WEBP
++  webpW = (Window) NULL; webpUp = 0;
++#endif
++
+   pcdW = (Window) NULL;  pcdUp = 0;
+ 
+ #ifdef HAVE_PIC2
+@@ -993,6 +997,11 @@ int main(argc, argv)
+   XSetTransientForHint(theDisp, pngW, dirW);
+ #endif
+ 
++#ifdef HAVE_WEBP
++  CreateWEBPW();
++  XSetTransientForHint(theDisp, webpW, dirW);
++#endif
++
+ #ifdef HAVE_PCD
+   CreatePCDW();
+   XSetTransientForHint(theDisp, pcdW, dirW);
+@@ -1898,6 +1907,9 @@ static void cmdSyntax(i)
+ #endif
+ #ifdef HAVE_PNG
+   VersionInfoPNG();
++#endif
++#ifdef HAVE_WEBP
++  VersionInfoWEBP();
+ #endif
+   /* pbm/pgm/ppm support is native, not via pbmplus/netpbm libraries */
+   fprintf(stderr, "\n");
+@@ -3153,6 +3165,15 @@ int ReadFileType(fname)
+            magicno[2]=='N'  && magicno[3]=='G')               rv = RFT_PNG;
+ #endif
+ 
++#ifdef HAVE_WEBP
++  else if (magicno[0]==0x52 && magicno[1]==0x49 &&
++          magicno[2]==0x46 && magicno[3]==0x46 &&
++          magicno[8]==0x57 && magicno[9]==0x45 &&
++          magicno[10]==0x42 && magicno[11]==0x50 &&
++          magicno[12]==0x56 && magicno[13]==0x50 &&
++          magicno[14]==0x38)                                 rv = RFT_WEBP;
++#endif
++
+ #ifdef HAVE_PDS
+   else if (strncmp((char *) magicno,  "NJPL1I00", (size_t) 8)==0 ||
+ 	   strncmp((char *) magicno+2,"NJPL1I",   (size_t) 6)==0 ||
+@@ -3290,6 +3311,10 @@ int ReadPicFile(fname, ftype, pinfo, quick)
+   case RFT_PNG:     rv = LoadPNG   (fname, pinfo);         break;
+ #endif
+ 
++#ifdef HAVE_WEBP
++  case RFT_WEBP:    rv = LoadWEBP  (fname, pinfo);         break;
++#endif
++
+ #ifdef HAVE_PDS
+   case RFT_PDSVICAR: rv = LoadPDS  (fname, pinfo);         break;
+ #endif
+diff --git a/xv.h b/xv.h
+index ee54aa9..b5742bd 100644
+--- a/xv.h
++++ b/xv.h
+@@ -416,6 +416,9 @@
+ /* END OF CONFIGURATION INFO */
+ /*****************************/
+ 
++#ifdef DOWEBP
++#  define HAVE_WEBP
++#endif
+ 
+ #ifdef DOJPEG
+ #  define HAVE_JPEG
+@@ -573,6 +576,12 @@
+ #  define F_TIFINC  0
+ #endif
+ 
++#ifdef HAVE_WEBP
++#  define F_WEBPINC  1
++#else
++#  define F_WEBPINC  0
++#endif
++
+ #ifdef HAVE_PNG
+ #  define F_PNGINC  1
+ #else
+@@ -626,7 +635,8 @@
+ #define F_JPC       ( 0 + F_PNGINC + F_JPGINC)
+ #define F_JP2       ( 0 + F_PNGINC + F_JPGINC + F_JP2INC)
+ #define F_GIF       ( 0 + F_PNGINC + F_JPGINC + F_JP2INC + F_JP2INC)  /* always avail; index varies */
+-#define F_TIFF      ( 0 + F_PNGINC + F_JPGINC + F_JP2INC + F_JP2INC + F_TIFINC)
++#define F_WEBP      ( 0 + F_PNGINC + F_JPGINC + F_JP2INC + F_JP2INC + F_WEBPINC)
++#define F_TIFF      ( 0 + F_PNGINC + F_JPGINC + F_JP2INC + F_JP2INC + F_WEBPINC + F_TIFINC)
+ #define F_PS        ( 1 + F_TIFF)
+ #define F_PBMRAW    ( 2 + F_TIFF)
+ #define F_PBMASCII  ( 3 + F_TIFF)
+@@ -696,6 +706,7 @@
+ #define RFT_PI       (JP_EXT_RFT + 4)
+ #define RFT_PIC2     (JP_EXT_RFT + 5)
+ #define RFT_MGCSFX   (JP_EXT_RFT + 6)
++#define RFT_WEBP     (JP_EXT_RFT + 7)
+ 
+ /* definitions for page up/down, arrow up/down list control */
+ #define LS_PAGEUP   0
+@@ -1409,6 +1420,11 @@ WHERE Window        pngW;
+ WHERE int           pngUp;        /* is pngW mapped, or what? */
+ #endif
+ 
++#ifdef HAVE_WEBP
++/* stuff used for 'webp' box */
++WHERE Window        webpW;
++WHERE int           webpUp;       /* is webpW mapped, or what? */
++#endif
+ 
+ #ifdef ENABLE_FIXPIX_SMOOTH
+ WHERE int           do_fixpix_smooth;  /* GRR 19980607: runtime FS dithering */
+@@ -2095,6 +2111,14 @@ int LoadSunRas             PARM((char *, PICINFO *));
+ int WriteSunRas            PARM((FILE *, byte *, int, int, int, byte *,
+ 				 byte *, byte*, int, int, int));
+ 
++/**************************** XVWEBP.C ***************************/
++int LoadWEBP               PARM((char *, PICINFO *));
++void CreateWEBPW           PARM((void));
++void WEBPDialog            PARM((int));
++int  WEBPCheckEvent        PARM((XEvent *));
++void WEBPSaveParams        PARM((char *));
++void VersionInfoWEBP       PARM((void));
++
+ /**************************** XVTARGA.C ***************************/
+ int LoadTarga              PARM((char *, PICINFO *));
+ int WriteTarga             PARM((FILE *, byte *, int, int, int, byte *,
+diff --git a/xvbrowse.c b/xvbrowse.c
+index 876440d..ab0224c 100644
+--- a/xvbrowse.c
++++ b/xvbrowse.c
+@@ -69,6 +69,7 @@ typedef unsigned int mode_t;  /* file mode bits */
+ #include "bits/br_targa"
+ #include "bits/br_tiff"
+ #include "bits/br_utah"
++#include "bits/br_webp"
+ #include "bits/br_xbm"
+ #include "bits/br_xpm"
+ #include "bits/br_xwd"
+@@ -117,7 +118,8 @@ typedef unsigned int mode_t;  /* file mode bits */
+ #define BF_PCD      30
+ #define BF_BZIP2    31
+ #define BF_JP2      32
+-#define BF_JPC      33
++#define BF_WEBP     33
++#define BF_JPC      34
+ #define JP_EXT_BF   (BF_JPC)
+ #define BF_MAG      (JP_EXT_BF + 1)
+ #define BF_MAKI     (JP_EXT_BF + 2)
+@@ -605,6 +607,7 @@ void CreateBrowse(geom, fgstr, bgstr, histr, lostr)
+   bfIcons[BF_PS]  =MakePix1(br->win,br_ps_bits,  br_ps_width,  br_ps_height);
+   bfIcons[BF_TGA] =MakePix1(br->win,br_tga_bits, br_tga_width, br_tga_height);
+   bfIcons[BF_TIFF]=MakePix1(br->win,br_tiff_bits,br_tiff_width,br_tiff_height);
++  bfIcons[BF_WEBP]=MakePix1(br->win,br_webp_bits,br_webp_width,br_webp_height);
+   bfIcons[BF_XBM] =MakePix1(br->win,br_xbm_bits, br_xbm_width, br_xbm_height);
+   bfIcons[BF_XPM] =MakePix1(br->win,br_xpm_bits, br_xpm_width, br_xpm_height);
+   bfIcons[BF_XWD] =MakePix1(br->win,br_xwd_bits, br_xwd_width, br_xwd_height);
+@@ -3351,6 +3354,7 @@ static void scanFile(br, bf, name)
+     case RFT_PI:       bf->ftype = BF_PI;       break;
+     case RFT_PIC2:     bf->ftype = BF_PIC2;     break;
+     case RFT_MGCSFX:   bf->ftype = BF_MGCSFX;   break;
++    case RFT_WEBP:     bf->ftype = BF_WEBP;     break;
+     }
+   }
+ }
+@@ -3975,6 +3979,7 @@ ms_auto_no:
+   case RFT_PI:       strcat(str,"PI file");               break;
+   case RFT_PIC2:     strcat(str,"PIC2 file");             break;
+   case RFT_MGCSFX:   strcat(str,"Magic Suffix file");     break;
++  case RFT_WEBP:     strcat(str,"WEBP file");             break;
+   default:           strcat(str,"file of unknown type");  break;
+   }
+ 
+diff --git a/xvdir.c b/xvdir.c
+index 7e8ead2..d698e60 100644
+--- a/xvdir.c
++++ b/xvdir.c
+@@ -65,8 +65,11 @@ static const char *saveFormats[] = {
+ #ifdef HAVE_JP2K
+ 					"JPEG 2000",
+ 					"JP2",
+-#endif 
++#endif
+ 					"GIF",
++#ifdef HAVE_WEBP
++                                        "WEBP",
++#endif
+ #ifdef HAVE_TIFF
+ 					"TIFF",
+ #endif
+@@ -1235,6 +1238,15 @@ int DoSave()
+   }
+ #endif
+ 
++#ifdef HAVE_WEBP
++  else if (fmt == F_WEBP) {   /* WEBP */
++    WEBPSaveParams(fullname);
++    WEBPDialog(1);                  /* open WEBP Dialog box */
++    dbut[S_BOK].lit = 0;  BTRedraw(&dbut[S_BOK]);
++    return 0;                      /* always 'succeeds' */
++  }
++#endif
++
+ #ifdef HAVE_PIC2
+   else if (fmt == F_PIC2) {   /* PIC2 */
+     if (PIC2SaveParams(fullname, col) < 0)
+@@ -1488,7 +1500,15 @@ void SetDirSaveMode(group, bnum)
+       colMB.dim[F_REDUCED]   = 1;
+       MBSelect(&colMB, F_BWDITHER);
+     }
+-
++#ifdef HAVE_WEBP
++    else if (MBWhich(&fmtMB) == F_WEBP) { /* turn off all but FULLCOLOR */
++      colMB.dim[F_FULLCOLOR] = 0;
++      colMB.dim[F_GREYSCALE] = 1;
++      colMB.dim[F_BWDITHER]  = 1;
++      colMB.dim[F_REDUCED]   = 1;
++      MBSelect(&colMB, F_FULLCOLOR);
++    }
++#endif
+     else if (MBWhich(&fmtMB) == F_FITS) { /* turn off 'color' modes */
+       colMB.dim[F_FULLCOLOR] = 1;
+       colMB.dim[F_GREYSCALE] = 0;
+@@ -1577,6 +1597,9 @@ static void changeSuffix()
+ #endif
+ #ifdef HAVE_PNG
+       (strcmp(lowsuf,"png" )==0) ||
++#endif
++#ifdef HAVE_WEBP
++      (strcmp(lowsuf,"webp")==0) ||
+ #endif
+       (strcmp(lowsuf,"wbmp")==0) ||
+       (strcmp(lowsuf,"xpm" )==0) ||
+@@ -1645,6 +1668,10 @@ static void changeSuffix()
+     case F_MAKI:     strcpy(lowsuf,"mki");  break;
+ #endif
+ 
++#ifdef HAVE_WEBP
++    case F_WEBP:     strcpy(lowsuf,"webp"); break;
++#endif
++
+ #ifdef HAVE_PI
+     case F_PI:       strcpy(lowsuf,"pi");   break;
+ #endif
+diff --git a/xvevent.c b/xvevent.c
+index 97d7d72..ec50727 100644
+--- a/xvevent.c
++++ b/xvevent.c
+@@ -230,6 +230,9 @@ int HandleEvent(event, donep)
+ #ifdef HAVE_PNG
+   static int wasPngUp=0;
+ #endif
++#ifdef HAVE_WEBP
++  static int wasWebpUp=0;
++#endif
+ #ifdef HAVE_PCD
+   static int wasPcdUp=0;
+ #endif
+@@ -329,6 +332,10 @@ int HandleEvent(event, donep)
+     if (PNGCheckEvent (event)) break;   /* event has been processed */
+ #endif
+ 
++#ifdef HAVE_WEBP
++    if (WEBPCheckEvent(event)) break;   /* event has been processed */
++#endif
++
+     if (PCDCheckEvent(event)) break;    /* event has been processed */
+ 
+ #ifdef HAVE_PIC2
+@@ -484,6 +491,10 @@ int HandleEvent(event, donep)
+       else if (client_event->window == pngW)  PNGDialog(0);
+ #endif
+ 
++#ifdef HAVE_WEBP
++      else if (client_event->window == webpW)  WEBPDialog(0);
++#endif
++
+       else if (client_event->window == pcdW)  PCDDialog(0);
+ 
+ #ifdef HAVE_PIC2
+@@ -686,6 +697,9 @@ int HandleEvent(event, donep)
+ #ifdef HAVE_PNG
+ 	if (wasPngUp)  { PNGDialog(wasPngUp);    wasPngUp=0; }
+ #endif
++#ifdef HAVE_WEBP
++       if (wasWebpUp) { WEBPDialog(wasWebpUp);  wasWebpUp=0; }
++#endif
+ #ifdef HAVE_PCD
+ 	if (wasPcdUp)  { PCDDialog(wasPcdUp);    wasPcdUp=0; }
+ #endif
+@@ -738,6 +752,9 @@ int HandleEvent(event, donep)
+ #ifdef HAVE_PNG
+ 	  if (pngUp)  { wasPngUp  = pngUp;   PNGDialog(0); }
+ #endif
++#ifdef HAVE_WEBP
++         if (webpUp) { wasWebpUp = webpUp;  WEBPDialog(0); }
++#endif
+ #ifdef HAVE_PCD
+ 	  if (pcdUp)  { wasPcdUp = pcdUp;    PCDDialog(0); }
+ #endif
+@@ -1373,6 +1390,10 @@ static void handleButtonEvent(event, donep, retvalp)
+     if (PNGCheckEvent (event)) break;
+ #endif
+ 
++#ifdef HAVE_WEBP
++    if (WEBPCheckEvent(event)) break;
++#endif
++
+ #ifdef HAVE_PCD
+     if (PCDCheckEvent (event)) break;	/* event has been processed */
+ #endif
+@@ -1656,6 +1677,10 @@ static void handleKeyEvent(event, donep, retvalp)
+     if (PNGCheckEvent (event)) break;
+ #endif
+ 
++#ifdef HAVE_WEBP
++    if (WEBPCheckEvent (event)) break;
++#endif
++
+     if (PCDCheckEvent (event)) break;
+ 
+ #ifdef HAVE_PIC2
+@@ -2742,6 +2767,10 @@ static void QuitOnInterrupt(XtPointer dummy, XtSignalId* Id)
+   if (pngUp) PNGDialog(0);    /* close png window */
+ #endif
+ 
++#ifdef HAVE_WEBP
++  if (webpUp) WEBPDialog(0);  /* close png window */
++#endif
++
+   if (pcdUp) PCDDialog(0);    /* close pcd window */
+ 
+ #ifdef HAVE_PIC2
+diff --git a/xvmisc.c b/xvmisc.c
+index 53b196d..512a767 100644
+--- a/xvmisc.c
++++ b/xvmisc.c
+@@ -550,6 +550,10 @@ void Quit(i)
+     if (pngW)  XDestroyWindow(theDisp, pngW);
+ #endif
+ 
++#ifdef HAVE_WEBP
++    if (webpW) XDestroyWindow(theDisp, webpW);
++#endif
++
+ #ifdef HAVE_PCD
+     if (pcdW)  XDestroyWindow(theDisp, pcdW);
+ #endif
+@@ -767,6 +771,10 @@ static void set_cursors(mainc, otherc)
+   if (pngW)  XDefineCursor(theDisp, pngW, otherc);
+ #endif
+ 
++#ifdef HAVE_WEBP
++  if (webpW)  XDefineCursor(theDisp, webpW, otherc);
++#endif
++
+ #ifdef HAVE_PCD
+   if (pcdW)  XDefineCursor(theDisp, pcdW, otherc);
+ #endif
+diff --git a/xvwebp.c b/xvwebp.c
+new file mode 100644
+index 0000000..e07060a
+--- /dev/null
++++ b/xvwebp.c
+@@ -0,0 +1,420 @@
++/*
++ * xvwebp.c - load routine for 'webp' format pictures
++ *
++ * written and submitted by:
++ *     Rainer Canavan (xv@canavan.de)
++ *
++ * LoadWEBP(fname, pinfo)
++ * WriteWEBP(fp, pic, ptype, w,h, rmap,gmap,bmap,numcols, cstyle, comment)
++ */
++
++
++#include "xv.h"
++
++#ifdef HAVE_WEBP
++
++#include <webp/types.h>
++#include <webp/encode.h>
++#include <webp/decode.h>
++
++static char *filename;
++static const char *bname;
++
++static void drawWEBPD   PARM((int, int, int, int));
++static void clickWEBPD  PARM((int, int));
++static void doCmd       PARM((int));
++static void writeWEBP   PARM((void));
++static int  WriteWEBP   PARM((FILE *, byte *, int, int, int,
++                                    byte *, byte *, byte *));
++
++
++/*** Stuff for WEBP Dialog box ***/
++#define WEBPWIDE 288
++#define WEBPHIGH 185
++
++#define QUALITY   70     /* default quality */
++
++#define DWIDE    86
++#define DHIGH    104
++
++#define P_BOK    0
++#define P_BCANC  1
++#define P_NBUTTS 2
++
++#define BUTTH    24
++
++static DIAL  qDial;
++static BUTT  pbut[P_NBUTTS];
++static CBUTT FlosslessCB;
++
++
++/*******************************************/
++void CreateWEBPW()
++{
++  webpW = CreateWindow("xv webp", "XVWEBP", NULL,
++                      WEBPWIDE, WEBPHIGH, infofg, infobg, 0);
++  if (!webpW) FatalError("can't create WEBP window!");
++
++  XSelectInput(theDisp, webpW, ExposureMask | ButtonPressMask | KeyPressMask);
++
++  DCreate(&qDial, webpW,  12, 25, DWIDE, DHIGH, 0.0,
++          100.0, QUALITY, 1.0, 3.0,
++          infofg, infobg, hicol, locol, "Quality", NULL);
++
++  CBCreate(&FlosslessCB,   webpW, 110, 6+qDial.y+ASCENT+4*LINEHIGH, "Lossless",
++           infofg, infobg, hicol, locol);
++  FlosslessCB.val = 0;
++
++  BTCreate(&pbut[P_BOK], webpW, WEBPWIDE-180-1, WEBPHIGH-10-BUTTH-1, 80, BUTTH,
++          "Ok", infofg, infobg, hicol, locol);
++  BTCreate(&pbut[P_BCANC], webpW, WEBPWIDE-90-1, WEBPHIGH-10-BUTTH-1, 80, BUTTH,
++          "Cancel", infofg, infobg, hicol, locol);
++
++  XMapSubwindows(theDisp, webpW);
++}
++
++
++/*******************************************/
++void WEBPDialog(vis)
++     int vis;
++{
++  if (vis) {
++    CenterMapWindow(webpW, pbut[P_BOK].x + (int) pbut[P_BOK].w/2,
++                          pbut[P_BOK].y + (int) pbut[P_BOK].h/2,
++                    WEBPWIDE, WEBPHIGH);
++  }
++  else XUnmapWindow(theDisp, webpW);
++  webpUp = vis;
++}
++
++
++/*******************************************/
++int WEBPCheckEvent(xev)
++     XEvent *xev;
++{
++  /* check event to see if it's for one of our subwindows.  If it is,
++     deal accordingly, and return '1'.  Otherwise, return '0' */
++
++  int rv;
++  rv = 1;
++
++  if (!webpUp) return 0;
++  if (xev->type == Expose) {
++    int x,y,w,h;
++    XExposeEvent *e = (XExposeEvent *) xev;
++    x = e->x; y = e->y; w = e->width; h = e->height;
++
++    /* throw away excess expose events for 'dumb' windows */
++    if (e->count > 0 && (e->window == qDial.win)) {}
++
++    else if (e->window == webpW)       drawWEBPD(x, y, w, h);
++    else if (e->window == qDial.win)   DRedraw(&qDial);
++    else rv = 0;
++  }
++
++  else if (xev->type == ButtonPress) {
++    XButtonEvent *e = (XButtonEvent *) xev;
++    int x,y;
++    x = e->x;  y = e->y;
++
++    if (e->button == Button1) {
++      if      (e->window == webpW)      clickWEBPD(x,y);
++      else if (e->window == qDial.win)  DTrack(&qDial, x, y);
++      else rv = 0;
++    }  /* button1 */
++    else rv = 0;
++  }  /* button press */
++
++  else if (xev->type == KeyPress) {
++    XKeyEvent *e = (XKeyEvent *) xev;
++    char buf[128];  KeySym ks;
++    int stlen;
++
++    stlen = XLookupString(e,buf,128,&ks,(XComposeStatus *) NULL);
++    buf[stlen] = '\0';
++
++    RemapKeyCheck(ks, buf, &stlen);
++
++    if (e->window == webpW) {
++      if (stlen) {
++        if (buf[0] == '\r' || buf[0] == '\n') { /* enter */
++          FakeButtonPress(&pbut[P_BOK]);
++        }
++        else if (buf[0] == '\033') {            /* ESC */
++          FakeButtonPress(&pbut[P_BCANC]);
++        }
++      }
++    }
++    else rv = 0;
++  }
++  else rv = 0;
++
++  if (rv==0 && (xev->type == ButtonPress || xev->type == KeyPress)) {
++    XBell(theDisp, 50);
++    rv = 1;   /* eat it */
++  }
++
++  return rv;
++}
++
++
++/*******************************************/
++void WEBPSaveParams(fname)
++     char *fname;
++{
++  filename = fname;
++}
++
++
++/*******************************************/
++static void drawWEBPD(x, y, w, h)
++     int x, y, w, h;
++{
++  const char *title   = "Save WEBP file...";
++
++  char ctitle1[20];
++  const char *ctitle2 = "Quality value determines";
++  const char *ctitle3 = "compression rate: higher";
++  const char *ctitle4 = "quality = bigger file.";
++
++  int i;
++  XRectangle xr;
++
++  xr.x = x;  xr.y = y;  xr.width = w;  xr.height = h;
++  XSetClipRectangles(theDisp, theGC, 0,0, &xr, 1, Unsorted);
++
++  XSetForeground(theDisp, theGC, infofg);
++  XSetBackground(theDisp, theGC, infobg);
++
++  for (i=0; i<P_NBUTTS; i++) BTRedraw(&pbut[i]);
++
++  DrawString(webpW,       15,  6+ASCENT,                          title);
++
++  sprintf(ctitle1, "Default = %d", QUALITY);
++  DrawString(webpW,      110,  6+qDial.y+ASCENT,            ctitle1);
++  DrawString(webpW,      110,  6+qDial.y+ASCENT+LINEHIGH,   ctitle2);
++  DrawString(webpW,      110,  6+qDial.y+ASCENT+2*LINEHIGH, ctitle3);
++  DrawString(webpW,      110,  6+qDial.y+ASCENT+3*LINEHIGH, ctitle4);
++
++  CBRedraw(&FlosslessCB);
++
++  XSetClipMask(theDisp, theGC, None);
++}
++
++
++/*******************************************/
++static void clickWEBPD(x,y)
++     int x,y;
++{
++  int i;
++  BUTT *bp;
++
++  /* check BUTTs */
++
++  for (i=0; i<P_NBUTTS; i++) {
++    bp = &pbut[i];
++    if (PTINRECT(x, y, bp->x, bp->y, bp->w, bp->h)) break;
++  }
++
++  if (i<P_NBUTTS) {  /* found one */
++    if (BTTrack(bp)) doCmd(i);
++  }
++
++  /* check CBUTTs */
++
++  else if (CBClick(&FlosslessCB,x,y)) {
++    int oldval = FlosslessCB.val;
++
++    CBTrack(&FlosslessCB);
++
++    if (oldval != FlosslessCB.val)
++    {
++      DSetActive(&qDial, !FlosslessCB.val);
++      DRedraw(&qDial); /* necessary? */
++    }
++  }
++}
++
++
++/*******************************************/
++static void doCmd(cmd)
++     int cmd;
++{
++  switch (cmd) {
++    case P_BOK:
++      {
++        char *fullname;
++
++        writeWEBP();
++        WEBPDialog(0);
++
++        fullname = GetDirFullName();
++        if (!ISPIPE(fullname[0])) {
++          XVCreatedFile(fullname);
++          StickInCtrlList(0);
++        }
++      }
++      break;
++
++    case P_BCANC:
++      WEBPDialog(0);
++      break;
++
++    default:
++      break;
++  }
++}
++
++/*******************************************/
++int LoadWEBP(fname, pinfo)
++     char    *fname;
++     PICINFO *pinfo;
++/*******************************************/
++{
++  /* returns '1' on success */
++
++  FILE  *fp;
++  int   c, w, h;
++  size_t filesize;
++  byte  *filebuf, *pic24;
++
++  bname = BaseName(fname);
++
++  pinfo->pic     = (byte *) NULL;
++  pinfo->comment = (char *) NULL;
++
++  fp = xv_fopen(fname,"r");
++  if (!fp) {
++     SetISTR(ISTR_WARNING,"%s:  %s", bname, "can't open file");
++     return 0;
++   }
++
++  /* compute file length */
++  fseek(fp, 0L, 2);
++  filesize = ftell(fp);
++  fseek(fp, 0L, 0);
++
++  if (filesize < 24) {
++     fclose(fp);
++     SetISTR(ISTR_WARNING,"%s:  %s", bname, "file is too short");
++     return 0;
++   }
++
++  /* read in the entire file */
++
++  filebuf = (byte *) calloc((size_t) filesize, (size_t) 1);
++  if (!filebuf) FatalError("couldn't malloc 'file buffer'");
++  c = fread(filebuf, (size_t) 1, (size_t) filesize, fp);
++  if (c != filesize) {
++    SetISTR(ISTR_WARNING,"%s:  %s", bname, "file read error");
++  }
++  fclose(fp);
++  pic24 = WebPDecodeRGB(filebuf, (size_t)filesize, &w, &h);
++  free(filebuf);
++  if (pic24 == NULL) {
++     SetISTR(ISTR_WARNING,"%s:  %s", bname, "WebP decode failed");
++     return 0;
++  }
++
++  pinfo->pic     = pic24;
++  pinfo->type    = PIC24;
++  pinfo->w       = w;
++  pinfo->h       = h;
++  pinfo->normw = pinfo->w;   pinfo->normh = pinfo->h;
++  pinfo->frmType = F_WEBP;
++  sprintf(pinfo->fullInfo,"WEBP, RGB. (%ld bytes)", filesize);
++  sprintf(pinfo->shrtInfo,"%dx%d WEBP.", w,h);
++  pinfo->colType = F_FULLCOLOR;
++
++  return 1;
++}
++
++/*******************************************/
++static void writeWEBP()
++{
++  FILE       *fp;
++  int         w, h, nc, rv, ptype, pfree;
++  byte       *inpix, *rmap, *gmap, *bmap;
++
++  fp = OpenOutFile(filename);
++  if (!fp) return;
++
++  bname = BaseName(filename);
++
++  WaitCursor();
++  inpix = GenSavePic(&ptype, &w, &h, &pfree, &nc, &rmap, &gmap, &bmap);
++
++  rv = WriteWEBP(fp, inpix, ptype, w, h, rmap, gmap, bmap);
++
++  SetCursors(-1);
++
++  if (CloseOutFile(fp, filename, rv) == 0) DirBox(0);
++
++  if (pfree) free(inpix);
++}
++
++
++/*******************************************/
++int WriteWEBP(fp,pic,ptype,w,h,rmap,gmap,bmap)
++     FILE *fp;
++     byte *pic;
++     int   ptype, w,h;
++     byte *rmap, *gmap, *bmap;
++
++/*******************************************/
++{
++  int i;
++  byte *xpic;
++  size_t imagesize;
++  size_t outsize;
++  int pfree;
++
++  imagesize = w*h*3;
++  WaitCursor();
++  pfree = 0;
++  if (ptype == PIC8) {
++    byte *last = pic + w*h;
++    register byte *from, *to;
++
++    from = pic;
++
++    if (!(pic = (byte *)malloc(imagesize))) FatalError("out of memory\n");
++    to = pic;
++    pfree = 1; /* Let the modified buffer be released later */
++
++    do {
++      i = *from;
++      *to++ = rmap[i];
++      *to++ = gmap[i];
++      *to++ = bmap[i];
++    } while (++from < last);
++
++  }
++  if (FlosslessCB.val == 0) {
++    outsize = WebPEncodeRGB(pic, w, h, w*3, ((int)qDial.val)/100, &xpic);
++  } else {
++    outsize = WebPEncodeLosslessRGB(pic, w, h, w*3, &xpic);
++  }
++  if (pfree == 1) { free(pic); }
++  if (outsize <= 0) {
++    free(xpic);
++    return -1;
++  }
++  fwrite(xpic, outsize, 1, fp);
++  SetCursors(-1);
++  free(xpic);
++  if (ferror(fp)) return -1;
++  return 0;
++}
++
++/*******************************************/
++void
++VersionInfoWEBP()	/* GRR 19980605 */
++{
++  int ver;
++  ver = WebPGetDecoderVersion();
++  fprintf(stderr, "   Compiled with libwebp; using libwebp %i.%i.%i.\n",
++    (ver >> 16) & 255, (ver >> 8 ) & 255, ver & 255);
++}
++
++#endif
+-- 
+2.17.1
+

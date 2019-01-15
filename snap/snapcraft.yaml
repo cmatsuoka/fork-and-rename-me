@@ -2,7 +2,7 @@ name: xv
 base: core18
 icon: xv.png
 grade: devel
-version: 3.10a+jumbo20070520+enh20081216
+version: '3.10a+grr20081216+dg20170513'
 summary: The classic image manipulation program
 description: |
   The ubiquitous and time-honored XV is the industry-leading program for
@@ -19,10 +19,18 @@ parts:
     plugin: dump
     override-build: |
       (cd $SNAPCRAFT_STAGE/xv-3.10a; tar cf - *) | tar xf -
+      # Greg Roelofs jumbo patch and enhancements, 20070520
       patch -p1 < $SNAPCRAFT_STAGE/xv-3.10a-jumbo-fix-enh-patch-20070520.txt
       patch -p1 < $SNAPCRAFT_STAGE/xv-3.10a-enhancements.20070520-20081216.diff
-      patch -p1 < $SNAPCRAFT_STAGE/xv-3.10a-namemax.patch
+      # LibPNG 1.5 API change fix
       patch -p0 < $SNAPCRAFT_STAGE/xv-libpng-1.5.patch
+      # Gabriel Somlo's name size fix
+      patch -p1 < $SNAPCRAFT_STAGE/xv-3.10a-namemax.patch
+      # Mark Brader's colormap cut fix 
+      patch -p1 < $SNAPCRAFT_STAGE/xv-3.10a-xvcut.patch
+      # Patches from GRR's collection and other sources curated by David Griffith
+      for i in $SNAPCRAFT_STAGE/00*; do echo "Patch: $i"; patch -p1 < $i; done
+      # Build and install
       make CCOPTS=-O3 JP2KINC=-I$SNAPCRAFT_STAGE/include JP2KLIB="-L$SNAPCRAFT_STAGE/lib -ljasper" PREFIX=
       make install DESTDIR=$SNAPCRAFT_PART_INSTALL PREFIX=
     build-packages:
@@ -30,15 +38,22 @@ parts:
       - make
       - libx11-dev
       - libxt-dev
+      - libxrandr-dev
       - libjpeg-turbo8-dev
       - libtiff-dev
       - libpng-dev
+      - libwebp-dev
       - zlib1g-dev
     stage-packages:
-      - libjpeg-turbo8
       - libx11-6
-      - libpng16-16
+      - libxt6
+      - libsm6
+      - libice6
+      - libxrandr2
+      - libjpeg-turbo8
       - libtiff5
+      - libpng16-16
+      - libwebp6
       - libjbig0
     prime:
       - bin/*

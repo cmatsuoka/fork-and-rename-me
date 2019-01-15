@@ -1,0 +1,401 @@
+From a1d499e99a4ffaef9055f397e715dae953209953 Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Thu, 27 Apr 2017 19:20:42 -0700
+Subject: [PATCH 35/68] Fix signal handling.
+
+This is from xv-20091215-werner-fink-multiple-fixes.patch.mime.
+For new Xorg libraries the third patch corrects the signal
+handling.
+---
+ Imakefile |  2 +-
+ Makefile  |  4 ++--
+ xv.c      | 23 ++++++++++++++++-------
+ xv.h      |  4 ----
+ xvevent.c | 21 +++++++++++++++++++--
+ xvgrab.c  | 16 ++++++++++++++++
+ xvpcd.c   |  8 ++++++++
+ xvpic2.c  |  8 ++++++++
+ xvpopup.c |  8 ++++++++
+ xvvd.c    | 32 ++++++++++++++++++++++++++------
+ 10 files changed, 104 insertions(+), 22 deletions(-)
+
+diff --git a/Imakefile b/Imakefile
+index cadc0e0..f1b51f7 100644
+--- a/Imakefile
++++ b/Imakefile
+@@ -150,7 +150,7 @@ SYS_LIBRARIES=        -lm
+ 
+ 
+ DEPLIBS = $(LIBJPEG) $(LIBTIFF)
+-LOCAL_LIBRARIES = $(XLIB) $(DEPLIBS)
++LOCAL_LIBRARIES = $(XLIB) $(XTOOLLIB) $(DEPLIBS)
+ 
+ DEFINES= $(SCO) $(UNIX) $(NODIRENT) $(VPRINTF) $(TIMERS) \
+ 	$(HPUX7) $(JPEG) $(TIFF) $(PDS) $(DXWM) $(RAND) \
+diff --git a/Makefile b/Makefile
+index 071d7d9..cc353ed 100644
+--- a/Makefile
++++ b/Makefile
+@@ -343,8 +343,8 @@ CFLAGS = $(CCOPTS) $(PNG) $(PNGINC) $(ZLIBINC) $(JPEG) $(JPEGINC) \
+ 	-DSYSCONFDIR=\"$(SYSCONFDIR)\" -DXVEXECPATH=\"$(LIBDIR)\"
+ 
+ ### remove -lm for BeOS:
+-LIBS = $(TIFFLIB) $(JPEGLIB) $(PNGLIB) $(ZLIBLIB) $(JP2KLIB) -L/usr/X11R6/lib -lX11 -lm
+-#LIBS = $(TIFFLIB) $(JPEGLIB) $(PNGLIB) $(ZLIBLIB) $(JP2KLIB) -lX11
++LIBS = $(TIFFLIB) $(JPEGLIB) $(PNGLIB) $(ZLIBLIB) $(JP2KLIB) -L/usr/X11R6/lib -lX11 -lXt -lm
++#LIBS = $(TIFFLIB) $(JPEGLIB) $(PNGLIB) $(ZLIBLIB) $(JP2KLIB) -lX11 -lXt
+ 
+ OBJS = 	xv.o xvevent.o xvroot.o xvmisc.o xvimage.o xvcolor.o xvsmooth.o \
+ 	xv24to8.o xvgif.o xvpm.o xvinfo.o xvctrl.o xvscrl.o xvalg.o \
+diff --git a/xv.c b/xv.c
+index 61b8fde..67dc49c 100644
+--- a/xv.c
++++ b/xv.c
+@@ -159,6 +159,8 @@ static int  curstype, stdinflag, browseMode, savenorm, preview, pscomp, preset,
+ static int  nodecor;
+ static double gamval, rgamval, ggamval, bgamval;
+ 
++XtAppContext context;
++
+ /*******************************************/
+ int main(argc, argv)
+      int    argc;
+@@ -173,6 +175,12 @@ int main(argc, argv)
+   Window rootReturn, parentReturn, *children;
+   unsigned int numChildren, rootDEEP;
+ 
++#ifdef AUTO_EXPAND
++  signal(SIGHUP, SIG_IGN);
++#endif
++#ifndef NOSIGNAL
++  signal(SIGQUIT, SIG_IGN);
++#endif
+ 
+ #ifdef VMS
+   /* convert VMS-style arguments to unix names and glob */
+@@ -271,11 +279,6 @@ int main(argc, argv)
+   if (!tmpdir) FatalError("can't malloc 'tmpdir'\n");
+   strcpy(tmpdir, tmpstr);
+ 
+-#ifdef AUTO_EXPAND
+-  Vdinit();
+-  vd_handler_setup();
+-#endif
+-
+   /* init command-line options flags */
+   infogeom = DEFINFOGEOM;  ctrlgeom = DEFCTRLGEOM;
+   gamgeom  = DEFGAMGEOM;   browgeom = DEFBROWGEOM;
+@@ -375,7 +378,10 @@ int main(argc, argv)
+   parseResources(argc,argv);
+   parseCmdLine(argc, argv);
+   verifyArgs();
+-
++#ifdef AUTO_EXPAND
++  Vdinit();
++  vd_handler_setup();
++#endif
+ 
+ #if 0
+ #ifdef XVEXECPATH
+@@ -1245,7 +1251,10 @@ static void parseResources(argc, argv)
+     exit(1);
+   }
+ 
+-
++  i = 0;
++  XtToolkitInitialize();
++  context = XtCreateApplicationContext();
++  XtDisplayInitialize(context, theDisp, NULL, "XV", NULL, 0, &i, argv);
+ 
+   if (rd_str ("aspect")) {
+     int n,d;
+diff --git a/xv.h b/xv.h
+index 6eec214..07cef5d 100644
+--- a/xv.h
++++ b/xv.h
+@@ -1947,10 +1947,6 @@ int   Rmvdir               PARM((char *));
+ int   Movevdir             PARM((char *, char *));
+ int   Isarchive            PARM((char *));
+ int   Isvdir               PARM((char *));
+-void  vd_HUPhandler        PARM((void));
+-void  vd_handler           PARM((int));
+-int   vd_Xhandler          PARM((Display *, XErrorEvent *));
+-int   vd_XIOhandler        PARM((Display *));
+ void  vd_handler_setup     PARM((void));
+ 
+ 
+diff --git a/xvevent.c b/xvevent.c
+index ca75f5f..b9964df 100644
+--- a/xvevent.c
++++ b/xvevent.c
+@@ -58,6 +58,7 @@ static void CropKey            PARM((int, int, int, int));
+ static void TrackPicValues     PARM((int, int));
+ static int  CheckForConfig     PARM((void));
+ static Bool IsConfig           PARM((Display *, XEvent *, char *));
++static void QuitOnInterrupt    PARM((XtPointer dummy, XtSignalId* Id));
+ static void onInterrupt        PARM((int));
+ 
+ static void   Paint            PARM((void));
+@@ -74,6 +75,11 @@ static void   annotatePic      PARM((void));
+ static int    debkludge_offx;
+ static int    debkludge_offy;
+ 
++#ifndef NOSIGNAL
++static XtSignalId IdQuit = 0;
++extern XtAppContext context;
++#endif
++
+ /****************/
+ int EventLoop()
+ /****************/
+@@ -89,6 +95,9 @@ int EventLoop()
+ 
+ 
+ #ifndef NOSIGNAL
++  if (IdQuit)
++    XtRemoveSignal(IdQuit);
++  IdQuit = XtAppAddSignal(context, QuitOnInterrupt, NULL);
+   signal(SIGQUIT, onInterrupt);
+ #endif
+ 
+@@ -139,7 +148,11 @@ int EventLoop()
+        in real-time (polling, flashing the selection, etc.) get next event */
+     if ((waitsec<0.0 && !polling && !HaveSelection()) || XPending(theDisp)>0)
+     {
++#ifndef NOSIGNAL
++      XtAppNextEvent(context, &event);
++#else
+       XNextEvent(theDisp, &event);
++#endif
+       retval = HandleEvent(&event,&done);
+     }
+ 
+@@ -2683,8 +2696,8 @@ int xvErrorHandler(disp, err)
+ 
+ 
+ /************************************************************************/
+-static void onInterrupt(i)
+-     int i;
++
++static void QuitOnInterrupt(XtPointer dummy, XtSignalId* Id)
+ {
+   /* but first, if any input-grabbing popups are active, we have to 'cancel'
+      them. */
+@@ -2731,6 +2744,10 @@ static void onInterrupt(i)
+ 
+ 
+ 
++static void onInterrupt(int i)
++{
++  XtNoticeSignal(IdQuit);
++}
+ 
+ 
+ /***********************************/
+diff --git a/xvgrab.c b/xvgrab.c
+index 0c9d62f..e89eeb9 100644
+--- a/xvgrab.c
++++ b/xvgrab.c
+@@ -69,6 +69,10 @@ static int    CountColors24       PARM((byte *, int, int,
+ static int    Trivial24to8        PARM((byte *, int, int, byte *,
+ 					byte *, byte *, byte *, int));
+ 
++#ifndef NOSIGNAL
++extern XtAppContext context;
++#endif
++
+ /***********************************/
+ int Grab()
+ {
+@@ -113,7 +117,11 @@ int Grab()
+       if (t >= startT + grabDelay) break;
+       if (XPending(theDisp)>0) {
+ 	XEvent evt;
++#ifndef NOSIGNAL
++        XtAppNextEvent(context, &evt);
++#else
+ 	XNextEvent(theDisp, &evt);
++#endif
+ 	i = HandleEvent(&evt, &done);
+ 	if (done) {                    /* only 'new image' cmd accepted=quit */
+ 	  if (i==QUIT) Quit(0);
+@@ -175,7 +183,11 @@ int Grab()
+       }
+ 
+       /* continue to handle events while waiting... */
++#ifndef NOSIGNAL
++      XtAppNextEvent(context, &evt);
++#else
+       XNextEvent(theDisp, &evt);
++#endif
+       i = HandleEvent(&evt, &done);
+       if (done) {                    /* only 'new image' cmd accepted=quit */
+ 	if (i==QUIT) {
+@@ -365,7 +377,11 @@ int Grab()
+       state = 0;
+       while (state != 3) {
+ 	XEvent event;
++#ifndef NOSIGNAL
++        XtAppNextEvent(context, &event);
++#else
+ 	XNextEvent(theDisp, &event);
++#endif
+ 	HandleEvent(&event, &i);
+ 
+ 	if (!(state&1) && event.type == MapNotify &&
+diff --git a/xvpcd.c b/xvpcd.c
+index 7d36e58..334fefe 100644
+--- a/xvpcd.c
++++ b/xvpcd.c
+@@ -114,6 +114,10 @@ static  byte  Y[351] = {
+   255
+ };
+ 
++#ifndef NOSIGNAL
++extern XtAppContext context;
++#endif
++
+ /*******************************************/
+ /* The size should be -1 for the popup to ask otherwise fast is assumed */
+ /* returns '1' on success */
+@@ -259,7 +263,11 @@ data for 16 base:
+     while (leaveitup) {
+       int i;
+       XEvent event;
++#ifndef NOSIGNAL
++      XtAppNextEvent(context, &event);
++#else
+       XNextEvent(theDisp, &event);
++#endif
+       HandleEvent(&event, &i);
+     }
+     /* At this point goforit and size will have been set */
+diff --git a/xvpic2.c b/xvpic2.c
+index 5be53db..2b31845 100644
+--- a/xvpic2.c
++++ b/xvpic2.c
+@@ -321,6 +321,10 @@ struct _form_tab {
+ #define P2BM 2
+ #define P2BI 3
+ 
++#ifndef NOSIGNAL
++extern XtAppContext context;
++#endif
++
+ /* The main routine to load a PIC2 file. */
+ int LoadPIC2(fname, pinfo, quick)
+ char *fname;
+@@ -3541,7 +3545,11 @@ int cmd;
+ 	x_offset = atoi(x_offsetp);
+ 	y_offset = atoi(y_offsetp);
+ 
++#ifndef NOSIGNAL
++        XtAppNextEvent(context, &event);
++#else
+         XNextEvent(theDisp, &event);
++#endif
+ 	HandleEvent(&event, &i);
+ 
+ 	writePIC2();
+diff --git a/xvpopup.c b/xvpopup.c
+index b61b684..ef11b20 100644
+--- a/xvpopup.c
++++ b/xvpopup.c
+@@ -130,6 +130,10 @@ static int         padLoadLen = 0;
+ static const char *padLoadNames[PAD_MAXDEFLEN];
+ static const char *padLoadVals [PAD_MAXDEFLEN];
+ 
++#ifndef NOSIGNAL
++extern XtAppContext context;
++#endif
++
+ 
+ /***************************************************/
+ void CenterMapWindow(win, dx, dy, w, h)
+@@ -311,7 +315,11 @@ static int doPopUp(txt, labels, n, poptyp, wname)
+ 
+   /* block until this window gets closed */
+   while (popUp) {
++#ifndef NOSIGNAL
++    XtAppNextEvent(context, &event);
++#else
+     XNextEvent(theDisp, &event);
++#endif
+     HandleEvent(&event, &i);
+   }
+ 
+diff --git a/xvvd.c b/xvvd.c
+index 7a9e298..e6acb90 100644
+--- a/xvvd.c
++++ b/xvvd.c
+@@ -26,6 +26,11 @@ static int   vd_UncompressFile		PARM((char *, char *));
+ static int   vd_tarc			PARM((char *));
+ static u_int vd_tar_sumchk		PARM((char *));
+ 
++static XtSignalId IdHup = 0;
++static XtSignalId IdInt = 0;
++static int   UsedSignal = 0;
++extern XtAppContext context;
++
+ #define VD_VDTABLESIZE	100
+ 
+ #define VD_ERR -2
+@@ -1041,7 +1046,15 @@ char *prog, *mode;
+  * If XV end by C-c, there are dust of directory which name is .xvvd???,
+  * made by xvvd. Then, I handle SIGINT, and add good finish.
+  */
+-void vd_HUPhandler()
++static void vd_HUPhandler(int sig)
++{
++    XtNoticeSignal(IdHup);
++#if defined(SYSV) || defined(SVR4) || defined(__USE_XOPEN_EXTENDED)
++    signal(SIGHUP, (void (*)PARM((int))) vd_HUPhandler);
++#endif
++}
++
++static void HUPhandler(XtPointer dummy, XtSignalId* Id)
+ {
+ #if defined(SYSV) || defined(SVR4) || defined(__USE_XOPEN_EXTENDED)
+     sighold(SIGHUP);
+@@ -1054,19 +1067,23 @@ void vd_HUPhandler()
+ 
+ #if defined(SYSV) || defined(SVR4) || defined(__USE_XOPEN_EXTENDED)
+     sigrelse(SIGHUP);
+-    signal(SIGHUP, (void (*)PARM((int))) vd_HUPhandler);
+ #else
+     sigsetmask(mask);
+ #endif
+ }
+ 
+-void vd_handler(sig)
+-int sig;
++static void vd_handler(int sig)
++{
++    UsedSignal = sig;
++    XtNoticeSignal(IdInt);
++}
++
++static void INThandler(XtPointer dummy, XtSignalId* Id)
+ {
+ #if defined(SYSV) || defined(SVR4) || defined(__USE_XOPEN_EXTENDED)
+-    sighold(sig);
++    sighold(UsedSignal);
+ #else
+-    sigblock(sigmask(sig));
++    sigblock(sigmask(UsedSignal));
+ #endif
+ 
+     Quit(1); /*exit(1);*/
+@@ -1091,6 +1108,9 @@ Display *disp;
+ 
+ void vd_handler_setup()
+ {
++    IdHup = XtAppAddSignal(context, HUPhandler, NULL);
++    IdInt = XtAppAddSignal(context, INThandler, NULL);
++
+     signal(SIGHUP, (void (*)PARM((int))) vd_HUPhandler);
+     signal(SIGINT, (void (*)PARM((int))) vd_handler);
+     signal(SIGTERM,(void (*)PARM((int))) vd_handler);
+-- 
+2.17.1
+

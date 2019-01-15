@@ -1,0 +1,76 @@
+From 6cbe0405dff6c5cfc8b2cd983400f4456050cdf0 Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Mon, 1 May 2017 14:03:49 -0700
+Subject: [PATCH 39/68] Minor tweak to 'nopos' parameter
+
+This is from xv-20100811-eeri-kask-nopos-window-placement-fix.patch
+
+Prior to this, the 'nopos' parameter didn't work very well.  With these
+changes, we now:
+
+(1) respect the hard-wired placing by 'xv' if no window manager is
+running; and
+
+(2) let the window manager do the placement if one is running.
+---
+ xv.c     | 7 +------
+ xv.h     | 1 +
+ xvmisc.c | 5 +++--
+ 3 files changed, 5 insertions(+), 8 deletions(-)
+
+diff --git a/xv.c b/xv.c
+index 67dc49c..1c6aa2f 100644
+--- a/xv.c
++++ b/xv.c
+@@ -144,7 +144,7 @@ static void add_filelist_to_namelist PARM((char *, char **, int *, int));
+ /* formerly local vars in main, made local to this module when
+    parseResources() and parseCmdLine() were split out of main() */
+ 
+-static int   imap, ctrlmap, gmap, browmap, cmtmap, clrroot, nopos, limit2x;
++static int   imap, ctrlmap, gmap, browmap, cmtmap, clrroot, limit2x;
+ static const char *histr, *lostr, *fgstr, *bgstr, *tmpstr;
+ static const char *infogeom, *ctrlgeom, *gamgeom, *browgeom, *textgeom, *cmtgeom;
+ static char *display, *whitestr, *blackstr;
+@@ -1834,11 +1834,6 @@ static void verifyArgs()
+ 
+   defaultCmapMode = colorMapMode;  /* default mode for 8-bit images */
+ 
+-  if (nopos) {
+-    maingeom = infogeom = ctrlgeom = gamgeom = browgeom = textgeom = cmtgeom =
+-      (const char *) NULL;
+-  }
+-
+   /* if -root and -maxp, disallow 'integer' tiling modes */
+   if (useroot && fixedaspect && automax && !rmodeset &&
+       (rootMode == RM_TILE || rootMode == RM_IMIRROR))
+diff --git a/xv.h b/xv.h
+index 1f5bce5..93d0381 100644
+--- a/xv.h
++++ b/xv.h
+@@ -1271,6 +1271,7 @@ WHERE int           bwidth,        /* border width of created windows */
+                     viewonly,      /* if true, ignore any user input */
+                     noFreeCols,    /* don't free colors when loading new pic */
+                     autoquit,      /* quit in '-root' or when click on win */
++                    nopos,         /* if true, don't set PPosition, USPosition hints */
+                     xerrcode,      /* errorcode of last X error */
+                     grabDelay,     /* # of seconds to sleep at start of Grab */
+                     startGrab;     /* start immediate grab ? */
+diff --git a/xvmisc.c b/xvmisc.c
+index 4a700e4..53b196d 100644
+--- a/xvmisc.c
++++ b/xvmisc.c
+@@ -100,8 +100,9 @@ Window CreateWindow(name,clname,geom,defw,defh,fg,bg,usesize)
+   x = y = 1;
+   i = XParseGeometry(geom,&x,&y, (unsigned int *) &w, (unsigned int *) &h);
+ 
+-  if ((i&XValue || i&YValue)) hints.flags = USPosition;
+-                         else hints.flags = PPosition;
++  if (nopos) hints.flags = 0;
++  else if ((i&XValue || i&YValue)) hints.flags = USPosition;
++  else hints.flags = PPosition;
+ 
+   if (!usesize || !(i&WidthValue))  w = defw;
+   if (!usesize || !(i&HeightValue)) h = defh;
+-- 
+2.17.1
+

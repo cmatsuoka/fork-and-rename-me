@@ -1,0 +1,153 @@
+From ce5432f5048c1899a56617c0532f180d7adcde47 Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Tue, 25 Apr 2017 23:07:39 -0700
+Subject: [PATCH 33/68] Avoid buffer overflows in bmp and pbm driver.
+
+This is from xv-20091215-werner-fink-multiple-fixes.patch.mime.
+---
+ xvbmp.c |  9 ++++++---
+ xvpbm.c | 38 ++++++++++++++++++++++++++++++++------
+ 2 files changed, 38 insertions(+), 9 deletions(-)
+
+diff --git a/xvbmp.c b/xvbmp.c
+index 77013ad..75a3f1f 100644
+--- a/xvbmp.c
++++ b/xvbmp.c
+@@ -212,6 +212,9 @@ int LoadBMP(fname, pinfo)
+     bPad -= 12;
+   }
+ 
++  if (biClrUsed > (1 << biBitCount))
++    biClrUsed = (1 << biBitCount);
++
+   /* load up colormap, if any */
+   if (biBitCount == 1 || biBitCount == 4 || biBitCount == 8) {
+     int i, cmaplen;
+@@ -257,13 +260,13 @@ int LoadBMP(fname, pinfo)
+     if (biWidth == 0 || biHeight == 0 || npixels/biWidth != biHeight ||
+         count/3 != npixels)
+       return (bmpError(bname, "image dimensions too large"));
+-    pic24 = (byte *) calloc((size_t) count, (size_t) 1);
++    pic24 = (byte *) calloc((size_t) (count + 1), (size_t) 1);
+     if (!pic24) return (bmpError(bname, "couldn't malloc 'pic24'"));
+   }
+   else {
+     if (biWidth == 0 || biHeight == 0 || npixels/biWidth != biHeight)
+       return (bmpError(bname, "image dimensions too large"));
+-    pic8 = (byte *) calloc((size_t) npixels, (size_t) 1);
++    pic8 = (byte *) calloc((size_t) (npixels + 1), (size_t) 1);
+     if (!pic8) return(bmpError(bname, "couldn't malloc 'pic8'"));
+   }
+ 
+@@ -516,7 +519,7 @@ static int loadBMP8(fp, pic8, w, h, comp, rightsideup)
+ 
+   rv = 0;
+ 
+-  pend = pic8 + w * h;
++  pend = pic8 + l;
+ 
+   if (comp == BI_RGB) {   /* read uncompressed data */
+     if (rightsideup) {
+diff --git a/xvpbm.c b/xvpbm.c
+index 181e752..11cafb5 100644
+--- a/xvpbm.c
++++ b/xvpbm.c
+@@ -5,6 +5,7 @@
+  * WritePBM(fp,pic,ptype,w,h,r,g,b,numcols,style,raw,cmt,comment)
+  */
+ 
++#include <stdint.h>
+ #include "copyright.h"
+ 
+ #include "xv.h"
+@@ -234,12 +235,17 @@ static int loadpbm(fp, pinfo, raw)
+   byte *pic8;
+   byte *pix;
+   int   i,j,bit,w,h,npixels;
++  uint64_t pixchk;
+ 
+   w = pinfo->w;
+   h = pinfo->h;
+ 
+   npixels = w * h;
+-  if (w <= 0 || h <= 0 || npixels/w != h)
++
++  pixchk = (uint64_t)w;
++  pixchk *= (uint64_t)h;
++
++  if (w <= 0 || h <= 0 || (uint64_t)npixels != pixchk)
+     return pbmError(bname, "image dimensions too large");
+ 
+   pic8 = (byte *) calloc((size_t) npixels, (size_t) 1);
+@@ -305,13 +311,17 @@ static int loadpgm(fp, pinfo, raw, maxv)
+ {
+   byte *pix, *pic8;
+   int   i,j,bitshift,w,h,npixels, holdmaxv;
+-
++  uint64_t pixchk;
+ 
+   w = pinfo->w;
+   h = pinfo->h;
+ 
+   npixels = w * h;
+-  if (w <= 0 || h <= 0 || npixels/w != h)
++
++  pixchk = (uint64_t)w;
++  pixchk *= (uint64_t)h;
++
++  if (w <= 0 || h <= 0 || (uint64_t)npixels != pixchk)
+     return pbmError(bname, "image dimensions too large");
+ 
+   pic8 = (byte *) calloc((size_t) npixels, (size_t) 1);
+@@ -389,13 +399,20 @@ static int loadppm(fp, pinfo, raw, maxv)
+ {
+   byte *pix, *pic24, scale[256];
+   int   i,j,bitshift, w, h, npixels, bufsize, holdmaxv;
++  uint64_t  bufchk, pixchk;
+ 
+   w = pinfo->w;
+   h = pinfo->h;
+ 
+   npixels = w * h;
+   bufsize = 3*npixels;
+-  if (w <= 0 || h <= 0 || npixels/w != h || bufsize/3 != npixels)
++
++  pixchk = (uint64_t)w;
++  bufchk = (uint64_t)npixels;
++  pixchk *= (uint64_t)h;
++  bufchk *= 3ULL;
++
++  if (w <= 0 || h <= 0 || (uint64_t)npixels != pixchk || (uint64_t)bufsize != bufchk)
+     return pbmError(bname, "image dimensions too large");
+ 
+   /* allocate 24-bit image */
+@@ -481,6 +498,7 @@ static int loadpam(fp, pinfo, raw, maxv)	/* unofficial RGBA extension */
+ {
+   byte *p, *pix, *pic24, *linebuf, scale[256], bgR, bgG, bgB, r, g, b, a;
+   int   i, j, bitshift, w, h, npixels, bufsize, linebufsize, holdmaxv;
++  uint64_t  bufchk, pixchk, lnbchk;
+ 
+   w = pinfo->w;
+   h = pinfo->h;
+@@ -488,8 +506,16 @@ static int loadpam(fp, pinfo, raw, maxv)	/* unofficial RGBA extension */
+   npixels = w * h;
+   bufsize = 3*npixels;
+   linebufsize = 4*w;
+-  if (w <= 0 || h <= 0 || npixels/w != h || bufsize/3 != npixels ||
+-      linebufsize/4 != w)
++
++  pixchk = (uint64_t)w;
++  bufchk = (uint64_t)npixels;
++  lnbchk = (uint64_t)w;
++  pixchk *= (uint64_t)h;
++  bufchk *= 3ULL;
++  lnbchk *= 4ULL;
++
++  if (w <= 0 || h <= 0 || (uint64_t)npixels != pixchk || (uint64_t)bufsize != bufchk ||
++      (uint64_t)linebufsize != lnbchk)
+     return pbmError(bname, "image dimensions too large");
+ 
+   /* allocate 24-bit image */
+-- 
+2.17.1
+

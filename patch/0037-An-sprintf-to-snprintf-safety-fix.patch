@@ -1,0 +1,26 @@
+From 13d2926081349b82ec22b8f6c0bb5af1577ccb1f Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Fri, 28 Apr 2017 12:21:14 -0700
+Subject: [PATCH 37/68] An sprintf() to snprintf() safety fix.
+
+This is from 20100206-niklas-edmundsson-filename-buffersize-fix2.patch.
+---
+ xvtext.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/xvtext.c b/xvtext.c
+index cb1da86..75f9a60 100644
+--- a/xvtext.c
++++ b/xvtext.c
+@@ -545,7 +545,7 @@ void ChangeCommentText()
+   tv->freeonclose = 0;
+ 
+   if (strlen(fullfname))
+-    sprintf(tv->title, "File: '%s'", BaseName(fullfname));
++    snprintf(tv->title, TITLELEN, "File: '%s'", BaseName(fullfname));
+   else
+     sprintf(tv->title, "<no file loaded>");
+ 
+-- 
+2.17.1
+

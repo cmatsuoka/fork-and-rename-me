@@ -1,0 +1,68 @@
+From b91710b5a0dd119c8214f1a99d026c24da92b17d Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Mon, 1 May 2017 14:18:58 -0700
+Subject: [PATCH 40/68] Fix off-by-one's resulting in dereferencing
+ out-of-bound memory.
+
+This is from xv-20110523-patrick-keshishian-openbsd-segfault-fix.msg.
+
+From http://marc.info/?l=openbsd-ports&m=130613524414672&w=2
+
+List:       openbsd-ports
+Subject:    [patch] graphics/xv (fixes segmentation fault)
+From:       patrick keshishian <pkeshish () gmail ! com>
+Date:       2011-05-23 7:17:30
+Message-ID: BANLkTimQqvTGFLTYsn7A+F1AHwtK0z31cg () mail ! gmail ! com
+[Download message RAW]
+
+Attached patch fixes crash in xv in smoothY(). The for()-loop iterates
+one too many times, and make clptr to point to out-of-bound memory,
+and later, cptr is assigned based on clptr (line 393) and causes a
+crash when dereferenced (line 398).
+
+Test image[1] from post[2] with following command on my 1366x768
+display (on amd64):
+
+$ xv -rmode 5 -quit -max openbsd.jpg
+
+The patch also fixes another for(i=0; i <=shigh; i++) case in
+smoothXY() (line 471). I don't have a test-case for this, but visually
+looks wrong.
+
+--patrick
+
+p.s., note that this patch is post-jump-patch applied.
+
+[1] http://openbsd-france.org/goodies/wallpapers/openbsd.jpg
+[2] http://marc.info/?l=openbsd-misc&m=130608796413023&w=2
+
+["patch-xvsmooth_c" (application/octet-stream)]
+---
+ xvsmooth.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/xvsmooth.c b/xvsmooth.c
+index faacf3b..bff73bb 100644
+--- a/xvsmooth.c
++++ b/xvsmooth.c
+@@ -369,7 +369,7 @@ int   is24, swide, shigh, dwide, dhigh;
+ 
+   lastline = linecnt = 0;
+ 
+-  for (i=0, clptr=pic824; i<=shigh; i++, clptr+=swide*bperpix) {
++  for (i=0, clptr=pic824; i<shigh; i++, clptr+=swide*bperpix) {
+     ProgressMeter(0, shigh, i, "Smooth");
+     if ((i&15) == 0) WaitCursor();
+ 
+@@ -468,7 +468,7 @@ int   is24, swide, shigh, dwide, dhigh;
+   lastline = linecnt = pixR = pixG = pixB = 0;
+   cptr = pic824;
+ 
+-  for (i=0; i<=shigh; i++) {
++  for (i=0; i<shigh; i++) {
+     ProgressMeter(0, shigh, i, "Smooth");
+     if ((i&15) == 0) WaitCursor();
+ 
+-- 
+2.17.1
+

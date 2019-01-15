@@ -1,0 +1,67 @@
+From 60a25db11a32bea3ced339e8b6fc71795a5c697c Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Tue, 25 Apr 2017 22:27:01 -0700
+Subject: [PATCH 31/68] Updated xvbmp.c to support reading the three newer
+ versions of BMP format.
+
+Three more versions of BMP were introduced since development of xv stopped.
+These are for Windows 95 / NT4, Windows 98 / 2000, and Windows NT / 2000.
+We still write BMP files in the old Windows 3.x version.
+If you need some other version, use ImageMagick.
+---
+ xvbmp.c | 17 ++++++++++++-----
+ 1 file changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/xvbmp.c b/xvbmp.c
+index 3e2bc49..77013ad 100644
+--- a/xvbmp.c
++++ b/xvbmp.c
+@@ -27,8 +27,11 @@
+ #define BI_PNG       5   /* BMP version 5 (not yet supported) */
+ 
+ #define WIN_OS2_OLD 12
+-#define WIN_NEW     40
+ #define OS2_NEW     64
++#define WIN_3X      40
++#define WIN_95_NT4  108
++#define WIN_98_2K   124
++#define WIN_NT_2K   128
+ 
+ #if (defined(UINT_MAX) && UINT_MAX != 0xffffffffU)
+ #  error XV's BMP code requires 32-bit unsigned integer type, but u_int isn't
+@@ -97,7 +100,8 @@ int LoadBMP(fname, pinfo)
+ 
+   biSize          = getint(fp);
+ 
+-  if (biSize == WIN_NEW || biSize == OS2_NEW) {
++  if (biSize == WIN_3X || biSize == OS2_NEW ||
++	biSize == WIN_95_NT4 || biSize == WIN_98_2K || biSize == WIN_NT_2K) {
+     biWidth         = getint(fp);
+     biHeight        = getint(fp);
+     biPlanes        = getshort(fp);
+@@ -330,8 +334,12 @@ int LoadBMP(fname, pinfo)
+   pinfo->colType = F_FULLCOLOR;
+ 
+   sprintf(pinfo->fullInfo, "%sBMP, %d bit%s per pixel%s.  (%ld bytes)",
+-	  ((biSize==WIN_OS2_OLD) ? "Old OS/2 " :
+-	   (biSize==WIN_NEW)     ? "Windows "  : ""),
++	  ((biSize==WIN_OS2_OLD) ? "OS/2 1.x " :
++	   (biSize==OS2_NEW)     ? "OS/2 2.x " :
++	   (biSize==WIN_3X)      ? "Windows 3.x "  :
++	   (biSize==WIN_95_NT4)  ? "Windows 95/NT4 " :
++	   (biSize==WIN_98_2K)   ? "Windows 98/2000" :
++	   (biSize==WIN_NT_2K)   ? "Windows NT/2000 " : ""),
+ 	  biBitCount,  (biBitCount == 1) ? "" : "s",
+ 	  cmpstr, filesize);
+ 
+@@ -834,7 +842,6 @@ static u_int getshort(fp)
+ {
+   int c, c1;
+   c = getc(fp);  c1 = getc(fp);
+-  fprintf(stderr, "getshort: %d, %d\n\n", c, c1);
+   return ((u_int) c) + (((u_int) c1) << 8);
+ }
+ 
+-- 
+2.17.1
+

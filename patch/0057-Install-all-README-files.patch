@@ -1,0 +1,37 @@
+From 8066c34fc7a0583cf6c90be57d0894c652c8aabe Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Wed, 3 May 2017 18:08:04 -0700
+Subject: [PATCH 57/68] Install all README files.
+
+This is from xv-20081218-fabian-greffrath-05-install-README.patch.
+---
+ Makefile | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 1e71924..1797f59 100644
+--- a/Makefile
++++ b/Makefile
+@@ -374,7 +374,7 @@ OBJS = 	xv.o xvevent.o xvroot.o xvmisc.o xvimage.o xvcolor.o xvsmooth.o \
+ 	xvmag.o xvpic.o xvmaki.o xvpi.o xvpic2.o xvvd.o xvmgcsfx.o \
+ 	xvml.o xvjp2k.o xvwebp.o xvg3.o
+ 
+-MISC = README INSTALL CHANGELOG IDEAS
++MISC = README* INSTALL CHANGELOG IDEAS
+ 
+ 
+ 
+@@ -438,8 +438,8 @@ install: all
+ 	  $(DESTDIR)$(MANDIR)/vdcomp.$(MANSUF)
+ #
+ 	$(MKDIR) $(DESTDIR)$(DOCDIR)		# or $(DESTDIR)$(LIBDIR)
+-	cp README.jumbo docs/xvdocs.pdf docs/xvdocs.ps $(DESTDIR)$(DOCDIR)/.
+-	chmod 644 $(DESTDIR)$(DOCDIR)/README.jumbo \
++	cp README* docs/xvdocs.pdf docs/xvdocs.ps $(DESTDIR)$(DOCDIR)/.
++	chmod 644 $(DESTDIR)$(DOCDIR)/README* \
+ 	  $(DESTDIR)$(DOCDIR)/xvdocs.pdf $(DESTDIR)$(DOCDIR)/xvdocs.ps
+ 
+         $(MKDIR) $(DESTDIR)$(XPMDIR)
+-- 
+2.17.1
+

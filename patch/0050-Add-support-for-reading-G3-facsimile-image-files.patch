@@ -1,0 +1,1022 @@
+From 473034f5edbdd4affe76e3962ddfceffb2560546 Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Wed, 3 May 2017 15:46:20 -0700
+Subject: [PATCH 50/68] Add support for reading G3 facsimile image files.
+
+This is from xv-jpdemailly-20070904-g3-fax-patch.mime.
+A fair amount of modification and correction was required to get this to work.
+---
+ Imakefile | 108 ++++++++++++-----
+ Makefile  |   9 +-
+ xv.c      |  42 ++++---
+ xv.h      |   7 +-
+ xvbutt.c  |   2 +-
+ xvdir.c   |   1 +
+ xvg3.c    | 350 ++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ xvg3.h    | 232 ++++++++++++++++++++++++++++++++++++
+ 8 files changed, 697 insertions(+), 54 deletions(-)
+ create mode 100644 xvg3.c
+ create mode 100644 xvg3.h
+
+diff --git a/Imakefile b/Imakefile
+index 40c488a..dd7f6c1 100644
+--- a/Imakefile
++++ b/Imakefile
+@@ -2,11 +2,20 @@
+  * be sure to check 'config.h' for a couple other configuration options
+  */
+ 
++/* Comment out if you don't need G3 fax files support */
++#define HaveG3
+ 
+ /* if, for whatever reason, you're unable to get the JPEG library to compile
+  * on your machine, *COMMENT OUT* the following line
+  */
+ #define HaveJpeg
++/* #define ReCompileJpeg */
++
++/* if, for whatever reason, you're unable to get the Jasper library to compile
++ * on your machine, *COMMENT OUT* the following line
++ */
++#define HaveJp2k
++/* #define ReCompileJp2k */
+ 
+ /* if, for whatever reason, you're unable to get the WEBP library to compile
+  * on your machine, *COMMENT OUT* the following line
+@@ -17,7 +26,13 @@
+  * on your machine, *COMMENT OUT* the following line
+  */
+ #define HaveTiff
++/* #define ReCompileTiff */
+ 
++/* if, for whatever reason, you don't want PNG support for xv, e.g. if
++ * PNG doesn't compile on your machine, *COMMENT OUT* the following line
++ */
++#define HavePng
++/* #define ReCompilePng */
+ 
+ /* if, for whatever reason, you're unable to get the PDS/VICAR support
+  * to compile (xvpds.c, and vdcomp.c), *COMMENT OUT* the following line
+@@ -25,6 +40,11 @@
+ #define HavePDS
+ 
+ 
++/* Precompiled libraries
++ */
++PRECOMPILEDLIBS = -ljpeg -ljasper -ltiff -lpng -lz
++
++
+ /*
+  * if you are running on a SysV-based machine, such as HP, Silicon Graphics,
+  * etc, uncomment one of the following lines to get you *most* of the way
+@@ -134,6 +154,18 @@ LIBJPEG = $(JPEGDIR)/libjpeg.a
+ JPEGINCLUDE = -I$(JPEGDIR)
+ #endif
+ 
++#ifdef HaveJp2k
++JP2K = -DDOJP2K
++JP2KDIR = jasper
++JP2KINCLUDE = -I$(JP2KDIR)
++#endif
++
++#ifdef HavePng
++PNG = -DDOPNG
++PNGDIR = png
++PNGINCLUDE = -I$(PNGDIR)
++#endif
++
+ #ifdef HaveTiff
+ TIFF = -DDOTIFF
+ TIFFDIR = tiff
+@@ -156,34 +188,34 @@ SYS_LIBRARIES=        -lm
+ #endif
+ 
+ 
+-DEPLIBS = $(LIBJPEG) $(LIBTIFF)
+-LOCAL_LIBRARIES = $(XLIB) $(XTOOLLIB) $(DEPLIBS)
++DEPLIBS = $(LIBJPEG) $(LIBJP2K) $(LIBTIFF) $(LIBPNG)
++LOCAL_LIBRARIES = $(PRECOMPILEDLIBS) $(XLIB) $(XTOOLLIB) $(DEPLIBS)
+ 
+-DEFINES= $(SCO) $(UNIX) $(NODIRENT) $(VPRINTF) $(TIMERS) \
+-	$(HPUX7) $(JPEG) $(TIFF) $(PDS) $(DXWM) $(RAND) \
++DEFINES= $(SCO) $(UNIX) $(NODIRENT) $(VPRINTF) $(TIMERS) $(HPUX7) \
++	$(G3FLAGS) $(JPEG) $(JP2K) $(TIFF) $(PDS) $(DXWM) $(RAND) \
+ 	$(BACKING_STORE) $(BSDTYPES) $(SGI) $(MGCSFX)
+ 
+ INCLUDES = $(JPEGINCLUDE) $(TIFFINCLUDE) $(WEBPINCLUDE)
+ 
+ SRCS1 =	xv.c xvevent.c xvroot.c xvmisc.c xvimage.c xvcolor.c xvsmooth.c \
+-	xv24to8.c xvgif.c xvpm.c xvinfo.c xvctrl.c xvscrl.c xvalg.c \
+-	xvgifwr.c xvdir.c xvbutt.c xvpbm.c xvxbm.c xvgam.c xvbmp.c \
+-	xvdial.c xvgraf.c xvsunras.c xvjpeg.c xvps.c xvpopup.c xvdflt.c \
++	xv24to8.c xvgif.c xvpm.c xvinfo.c xvctrl.c xvscrl.c xvalg.c xvg3.c \
++	xvgifwr.c xvdir.c xvbutt.c xvpbm.c xvxbm.c xvgam.c xvbmp.c xvdial.c \
++	xvgraf.c xvsunras.c xvjpeg.c xvjp2k.c xvps.c xvpopup.c xvdflt.c \
+ 	xvtiff.c xvtiffwr.c xvpds.c xvrle.c xviris.c xvgrab.c vprintf.c \
+ 	xvbrowse.c xvtext.c xvpcx.c xviff.c xvtarga.c xvxpm.c xvcut.c \
+ 	xvxwd.c xvfits.c xvpng.c xvzx.c xvwbmp.c xvpcd.c \
+ 	xvmag.c xvpic.c xvmaki.c xvpi.c xvpic2.c xvvd.c xvmgcsfx.c \
+-	xvml.c xvwebp.c
++	xvml.c xvhips.c xvwebp.c
+ 
+ OBJS1 =	xv.o xvevent.o xvroot.o xvmisc.o xvimage.o xvcolor.o xvsmooth.o \
+-	xv24to8.o xvgif.o xvpm.o xvinfo.o xvctrl.o xvscrl.o xvalg.o \
+-	xvgifwr.o xvdir.o xvbutt.o xvpbm.o xvxbm.o xvgam.o xvbmp.o \
+-	xvdial.o xvgraf.o xvsunras.o xvjpeg.o xvps.o xvpopup.o xvdflt.o \
++	xv24to8.o xvgif.o xvpm.o xvinfo.o xvctrl.o xvscrl.o xvalg.o xvg3.o \
++	xvgifwr.o xvdir.o xvbutt.o xvpbm.o xvxbm.o xvgam.o xvbmp.o xvdial.o \
++	xvgraf.o xvsunras.o xvjpeg.o xvjp2k.o xvps.o xvpopup.o xvdflt.o \
+ 	xvtiff.o xvtiffwr.o xvpds.o xvrle.o xviris.o xvgrab.o vprintf.o \
+ 	xvbrowse.o xvtext.o xvpcx.o xviff.o xvtarga.o xvxpm.o xvcut.o \
+ 	xvxwd.o xvfits.o xvpng.o xvzx.o xvwbmp.o xvpcd.o \
+ 	xvmag.o xvpic.o xvmaki.o xvpi.o xvpic2.o xvvd.o xvmgcsfx.o \
+-	xvml.o xvwebp.o
++	xvml.o xvhips.o xvwebp.o
+ 
+ SRCS2=	bggen.c
+ OBJS2=	bggen.o
+@@ -205,28 +237,11 @@ all::
+ 	@echo ""
+ 	@echo "  Did you remember to 'make depend' first?"
+ 	@echo ""
+-
+-
+-#if defined(HaveJpeg) || defined(HaveTiff)
+-#  ifdef HaveJpeg
+-#    ifdef HaveTiff
+-       SUBDIRS = tiff
+-#    else
+-       SUBDIRS = 
+-#    endif
+-#  else
+-     SUBDIRS = tiff
+-#  endif
+-#  define PassCDebugFlags
+-#  define IHaveSubdirs
+-#endif
+-
+-
+-all::
+ 	@echo "  building xv ..."
+ 	@echo ""
+ 
+ 
++#ifdef ReCompileJpeg
+ #ifdef HaveJpeg
+ $(LIBJPEG):
+ 	cd $(JPEGDIR); $(MAKE) libjpeg.a
+@@ -238,7 +253,23 @@ clean::
+ 	( cd $(JPEGDIR) ; $(MAKE) clean )
+ 	@echo ""
+ #endif
++#endif
++
++#ifdef ReCompileJp2k
++#ifdef HaveJp2k
++$(LIBJP2K):
++      cd $(JP2KDIR); $(MAKE) libjasper.a
++
++clean::
++      @echo ""
++      @echo "  cleaning in $(JP2KDIR) ..."
++      @echo ""
++      ( cd $(JP2KDIR) ; $(MAKE) clean )
++      @echo ""
++#endif
++#endif
+ 
++#ifdef ReCompileTiff
+ #ifdef HaveTiff
+ $(LIBTIFF):
+ 	cd $(TIFFDIR); $(MAKE) libtiff.a
+@@ -249,8 +280,20 @@ clean::
+ 	( cd $(TIFFDIR) ; $(MAKE) clean )
+ 	@echo ""
+ #endif
++#endif
+ 
+-
++#ifdef ReCompilePng
++#ifdef HavePng
++$(LIBPNG):
++      cd $(PNGDIR); $(MAKE) libpng.a
++  
++clean::
++      @echo "  cleaning in $(PNGDIR) ..."
++      @echo ""
++      ( cd $(PNGDIR) ; $(MAKE) clean )
++      @echo ""
++#endif
++#endif
+ 
+ SRCS = $(SRCS1) $(SRCS2) $(SRCS3) $(SRCS4)
+   
+@@ -286,6 +329,9 @@ InstallManPageLong(docs/vdcomp,$(MANDIR),vdcomp)
+ 
+ InstallNonExecFile(xv_mgcsfx.sample,$(MGCSFXDIR))
+ 
++all::
++	strip xv bggen xcmap xvpictoppm vdcomp
++
+ tar:
+ 	tar cf xv.tar Makefile* Imakefile *.c *.h bits docs \
+ 		 docs unsupt vms $(JPEGDIR) $(TIFFDIR) $(MISC)
+diff --git a/Makefile b/Makefile
+index 6be3dbb..3eca828 100644
+--- a/Makefile
++++ b/Makefile
+@@ -196,6 +196,11 @@ JP2KINC = -I$(JP2KDIR)
+ JP2KLIB = -L$(JP2KDIR) -ljasper
+ 
+ 
++### if, for whatever reason, you don't want to build G3 facsimile support,
++### *COMMENT OUT* the following line
++G3FAX = -DDOG3
++
++
+ ###
+ ### if, for whatever reason, you're unable to get the PDS/VICAR support
+ ### to compile (xvpds.c, and vdcomp.c), *COMMENT OUT* the following line,
+@@ -349,7 +354,7 @@ XRANDRLIB = -lXrandr
+ ALL_CFLAGS = $(PNG) $(PNGINC) $(ZLIBINC) $(JPEG) $(JPEGINC) $(WEBP) $(WEBPINC) \
+ 	$(TIFF) $(TIFFINC) $(PDS) $(JP2K) $(JP2KINC) $(TVL10N) $(MGCSFX) \
+ 	$(UNIX) $(BSDTYPES) $(RAND) $(MALLOC) $(DXWM) $(MCHN) $(NODIRENT) \
+-	$(VPRINTF) $(TIMERS) $(XRANDR) -DDOCDIR=\"$(DOCDIR)\" \
++	$(VPRINTF) $(TIMERS) $(XRANDR) $(G3FAX) -DDOCDIR=\"$(DOCDIR)\" \
+ 	-DSYSCONFDIR=\"$(SYSCONFDIR)\" -DXVEXECPATH=\"$(LIBDIR)\" \
+ 	$(CFLAGS)
+ 
+@@ -365,7 +370,7 @@ OBJS = 	xv.o xvevent.o xvroot.o xvmisc.o xvimage.o xvcolor.o xvsmooth.o \
+ 	xvbrowse.o xvtext.o xvpcx.o xviff.o xvtarga.o xvxpm.o xvcut.o \
+ 	xvxwd.o xvfits.o xvpng.o xvzx.o xvwbmp.o xvpcd.o xvhips.o \
+ 	xvmag.o xvpic.o xvmaki.o xvpi.o xvpic2.o xvvd.o xvmgcsfx.o \
+-	xvml.o xvjp2k.o xvwebp.o
++	xvml.o xvjp2k.o xvwebp.o xvg3.o
+ 
+ MISC = README INSTALL CHANGELOG IDEAS
+ 
+diff --git a/xv.c b/xv.c
+index db91af1..4a085e4 100644
+--- a/xv.c
++++ b/xv.c
+@@ -55,7 +55,7 @@ static int    randomShow = 0;   /* do a 'random' slideshow */
+ static int    startIconic = 0;  /* '-iconic' option */
+ static int    defaultVis  = 0;  /* true if using DefaultVisual */
+ #ifdef HAVE_G3
+-static int    fax = 0;          /* temporary(?) kludge */
++static int    lowresfax = 0;    /* temporary(?) kludge */
+ int           highresfax = 0;
+ #endif
+ static double hexpand = 1.0;    /* '-expand' argument */
+@@ -1580,10 +1580,6 @@ static void parseCmdLine(argc, argv)
+       }
+     }
+ 
+-#ifdef HAVE_G3
+-    else if (!argcmp(argv[i],"-fax",3,0,&highresfax));     /* fax */
+-#endif
+-
+     else if (!argcmp(argv[i],"-fg",3,0,&pm))               /* fg color */
+       { if (++i<argc) fgstr = argv[i]; }
+ 
+@@ -1620,6 +1616,8 @@ static void parseCmdLine(argc, argv)
+       { if (++i<argc) histr = argv[i]; }
+ 
+ #ifdef HAVE_G3
++    else if (!argcmp(argv[i],"-fax",3,3,&highresfax)); /* high resolution fax */
++    else if (!argcmp(argv[i],"-lowresfax",4,0,&lowresfax)); /* low resolution fax */
+     else if (!argcmp(argv[i],"-highresfax",4,0,&highresfax));/* high res. fax */
+ #endif
+ 
+@@ -1951,9 +1949,6 @@ static void cmdSyntax(i)
+   printoption("[-/+dither]");
+   printoption("[-drift dx dy]");
+   printoption("[-expand exp | hexp:vexp]");
+-#ifdef HAVE_G3
+-  printoption("[-fax]");
+-#endif
+   printoption("[-fg color]");
+   printoption("[-/+fixed]");
+ #ifdef ENABLE_FIXPIX_SMOOTH
+@@ -1969,9 +1964,6 @@ static void cmdSyntax(i)
+   printoption("[-help]");
+   printoption("[-/+hflip]");
+   printoption("[-hi color]");
+-#ifdef HAVE_G3
+-  printoption("[-highresfax]");
+-#endif
+   printoption("[-/+hist]");
+   printoption("[-/+hsv]");
+   printoption("[-ibg color]");  /* GRR 19980314 */
+@@ -2052,6 +2044,11 @@ static void cmdSyntax(i)
+   printoption("[-white color]");
+   printoption("[-windowid windowid]");
+   printoption("[-/+wloop]");
++#ifdef HAVE_G3
++  printoption("[-fax]");
++  printoption("[-lowresfax]");
++  printoption("[-highresfax]");
++#endif
+   printoption("[filename ...]");
+   fprintf(stderr,"\n\n");
+   Quit(i);
+@@ -3149,10 +3146,13 @@ int ReadFileType(fname)
+ #endif
+ 
+ #ifdef HAVE_JP2K
+-  else if (magicno[0]==0xff && magicno[1]==0x4f && 
++  else if (magicno[0]==0xff && magicno[1]==0x4f &&
+            magicno[2]==0xff && magicno[3]==0x51)              rv = RFT_JPC;
+ 
+-  else if (memcmp(magicno, jp2k_magic, sizeof(jp2k_magic))==0) rv = RFT_JP2;
++//  else if (memcmp(magicno, jp2k_magic, sizeof(jp2k_magic))==0) rv = RFT_JP2;
++  else if (((int *)magicno)[0]==0x0000000c &&
++           ((int *)magicno)[1]==0x6a502020 &&
++           ((int *)magicno)[2]==0x0d0a870a)             rv = RFT_JP2;
+ #endif
+ 
+ #ifdef HAVE_TIFF
+@@ -3193,8 +3193,12 @@ int ReadFileType(fname)
+   else if ((magicno[0]==  1 && magicno[1]==  1 &&
+             magicno[2]== 77 && magicno[3]==154 &&
+             magicno[4]==128 && magicno[5]==  0 &&
+-            magicno[6]==  1 && magicno[7]== 77)
+-           || highresfax || fax) /* kludge! */                rv = RFT_G3;
++            magicno[6]==  1 && magicno[7]== 77 ||
++            magicno[6]==  1 && magicno[7]== 77) ||
++            highresfax || lowresfax || !strcmp(fname+strlen(fname)-3,".g3")) {
++               if (!lowresfax) highresfax = 1;
++               rv = RFT_G3;
++  }
+ #endif
+ 
+ #ifdef HAVE_MAG
+@@ -3303,6 +3307,10 @@ int ReadPicFile(fname, ftype, pinfo, quick)
+   case RFT_JP2:     rv = LoadJP2   (fname, pinfo, quick);  break;
+ #endif
+ 
++#ifdef HAVE_G3
++  case RFT_G3:      rv = LoadG3    (fname, pinfo);         break;
++#endif
++
+ #ifdef HAVE_TIFF
+   case RFT_TIFF:    rv = LoadTIFF  (fname, pinfo, quick);  break;
+ #endif
+@@ -3319,10 +3327,6 @@ int ReadPicFile(fname, ftype, pinfo, quick)
+   case RFT_PDSVICAR: rv = LoadPDS  (fname, pinfo);         break;
+ #endif
+ 
+-#ifdef HAVE_G3
+-  case RFT_G3:      rv = LoadG3    (fname, pinfo);         break;
+-#endif
+-
+ #ifdef GS_PATH
+   case RFT_PS:      rv = LoadPS    (fname, pinfo, quick);  break;
+ #endif
+diff --git a/xv.h b/xv.h
+index 426f64d..f43c90d 100644
+--- a/xv.h
++++ b/xv.h
+@@ -651,7 +651,8 @@
+ #define F_FITS      (10 + F_TIFF)
+ #define F_PM        (11 + F_TIFF)
+ #define F_ZX        (12 + F_TIFF)   /* [JCE] */
+-#define F_WBMP      (13 + F_TIFF)
++#define F_G3        (13 + F_TIFF)   /* [JCE] */
++#define F_WBMP      (14 + F_TIFF)
+ #define JP_EXT_F    (F_WBMP)
+ #define F_MAG       (JP_EXT_F + F_MAGINC)
+ #define F_PIC       (JP_EXT_F + F_MAGINC + F_PICINC)
+@@ -1988,6 +1989,10 @@ int LoadFITS               PARM((char *, PICINFO *, int));
+ int WriteFITS              PARM((FILE *, byte *, int, int, int, byte *,
+ 				 byte *, byte *, int, int, char *));
+ 
++/**************************** XVG3.C ****************************/
++int LoadG3                 PARM((char *, PICINFO *));
++
++
+ /**************************** XVGIF.C ***************************/
+ int LoadGIF                PARM((char *, PICINFO *));
+ 
+diff --git a/xvbutt.c b/xvbutt.c
+index 755b762..4b0b1e6 100644
+--- a/xvbutt.c
++++ b/xvbutt.c
+@@ -866,7 +866,7 @@ void MBCreate(mb, win, x, y, w, h, title, list, nlist, fg, bg, hi, lo)
+   mb->h        = h;
+   mb->title    = title;
+   mb->active   = 1;
+-  mb->list     = list;
++  mb->list     = (const char **)list;
+   mb->nlist    = nlist;
+   mb->hascheck = 0;
+   mb->fg       = fg;
+diff --git a/xvdir.c b/xvdir.c
+index d698e60..c2e66b4 100644
+--- a/xvdir.c
++++ b/xvdir.c
+@@ -85,6 +85,7 @@ static const char *saveFormats[] = {
+ 					"FITS",
+ 					"PM",
+ 					"Spectrum SCREEN$",	/* [JCE] */
++					"G3 fax",		/* [JPD] and [DEG] */
+ 					"WBMP",
+ #ifdef HAVE_MAG
+ 					"MAG",
+diff --git a/xvg3.c b/xvg3.c
+new file mode 100644
+index 0000000..3609d31
+--- /dev/null
++++ b/xvg3.c
+@@ -0,0 +1,350 @@
++/* xvg3.c - load in a Group 3 FAX file for XV
++ *
++ * This is simply a modified g3topbm.c.
++ * Modified by Todd_Atkins@EE-CF.Stanford.EDU
++ */
++
++/* g3topbm.c - read a Group 3 FAX file and produce a portable bitmap
++**
++** Copyright (C) 1989 by Paul Haeberli <paul@manray.sgi.com>.
++**
++** Permission to use, copy, modify, and distribute this software and its
++** documentation for any purpose and without fee is hereby granted, provided
++** that the above copyright notice appear in all copies and that both that
++** copyright notice and this permission notice appear in supporting
++** documentation.  This software is provided "as is" without express or
++** implied warranty.
++*/
++
++#include "xv.h"
++
++#ifdef HAVE_G3
++
++#include "xvg3.h"
++
++#if __STDC__
++#define ARGS(alist) alist
++#else /*__STDC__*/
++#define ARGS(alist) ()
++#define const
++#endif /*__STDC__*/
++
++#define WHITE 0
++#define BLACK 1
++
++#define TABSIZE(tab) (sizeof(tab)/sizeof(struct tableentry))
++#define MAXCOLS 1728
++#define MAXROWS 4300	/* up to two pages long */
++
++static int endoffile;
++static int eols;
++static int rawzeros;
++static int shdata;
++static int kludge;
++static int reversebits;
++
++#define WHASHA 3510
++#define WHASHB 1178
++
++#define BHASHA 293
++#define BHASHB 2695
++
++#define HASHSIZE 1021
++static tableentry* whash[HASHSIZE];
++static tableentry* bhash[HASHSIZE];
++
++static int addtohash ARGS(( tableentry* hash[], tableentry* te, int n, int a, int b ));
++static tableentry* hashfind ARGS(( tableentry* hash[], int length, int code, int a, int b ));
++static int getfaxrow ARGS(( FILE* inf, int row, byte* bitrow ));
++static void skiptoeol ARGS(( FILE* file ));
++static int rawgetbit ARGS(( FILE* file ));
++
++extern int highresfax;
++
++int
++LoadG3 ( fname, pinfo )
++    char* fname;
++    PICINFO * pinfo;
++{
++    FILE *fp;
++    int argn, rows, cols, row, col, i;
++    byte* bytes[MAXROWS];
++    byte* bp;
++
++    endoffile = 0;
++    kludge = 0;
++    reversebits = 0;
++    pinfo->pic =  (byte *) NULL;
++    pinfo->comment = (char *) NULL;
++    pinfo->numpages = 0;
++
++    if ( (fp = fopen(fname, "r")) == NULL )
++	{
++	SetISTR(ISTR_WARNING, "Cannot open %s", fname);
++	return 0 ;
++	}
++
++    eols = 0;
++
++    SetISTR(ISTR_INFO,"Loading Fax(G3) hash tables ...");
++
++    if ( kludge )
++	{
++	/* Skip extra lines to get in sync. */
++	skiptoeol( fp );
++	skiptoeol( fp );
++	skiptoeol( fp );
++	}
++    skiptoeol( fp );
++    for ( i = 0; i < HASHSIZE; ++i )
++	whash[i] = bhash[i] = (tableentry*) 0;
++    if (addtohash( whash, twtable, TABSIZE(twtable), WHASHA, WHASHB ))
++	return 0;
++    if (addtohash( whash, mwtable, TABSIZE(mwtable), WHASHA, WHASHB ))
++	return 0;
++    if (addtohash( whash, extable, TABSIZE(extable), WHASHA, WHASHB ))
++	return 0;
++    if (addtohash( bhash, tbtable, TABSIZE(tbtable), BHASHA, BHASHB ))
++	return 0;
++    if (addtohash( bhash, mbtable, TABSIZE(mbtable), BHASHA, BHASHB ))
++	return 0;
++    if (addtohash( bhash, extable, TABSIZE(extable), BHASHA, BHASHB ))
++	return 0;
++ 
++    SetISTR(ISTR_INFO,"Reading Fax(G3) image...");
++
++    cols = 0;
++    for ( rows = 0; rows < MAXROWS; ++rows ) {
++	if ((bytes[rows] = (byte*) 
++               malloc(MAXCOLS * sizeof(byte))) == (byte*) NULL)
++	    return 0;
++	col = getfaxrow( fp, rows, bytes[rows] );
++	if ( endoffile )
++	    break;
++	if ( col > cols )
++	    cols = col;
++	if ( !highresfax ) {
++	    bytes[rows + 1] = bytes[rows];
++	    ++rows;
++	}
++    }
++
++    fclose( fp );
++
++    /* JPD / routines seem to produce 2 rows in excess ... */
++    rows -= 2;
++
++    if ((pinfo->pic = (byte *) malloc( rows*cols*sizeof(byte) ))==(byte*) NULL)
++	return 0;
++
++    for ( row = 0, bp = pinfo->pic; row < rows; ++row, bp += cols )
++	memcpy(bp, bytes[row], cols);	
++
++    for ( row = 0, bp = pic; row < rows; ++row, bp += cols )
++	if (row==0 | (row>0 && bytes[row]!=bytes[row-1])) free(bytes[row]);
++
++    pinfo->frmType = F_G3;
++    pinfo->type = PIC8;
++    pinfo->colType = F_BWDITHER;
++    pinfo->w = cols;
++    pinfo->h = rows;
++    pinfo->r[0] = pinfo->g[0] = pinfo->b[0] = 255;
++    pinfo->r[1] = pinfo->g[1] = pinfo->b[1] = 0;
++    sprintf(pinfo->shrtInfo, "Fax G3 %dx%d", cols, rows);
++    sprintf(pinfo->fullInfo, "Fax G3 %dx%d, black & white image", cols, rows);
++    return 1;
++}
++
++static int
++addtohash(hash, te, n, a, b)
++	tableentry* hash[];
++	tableentry* te;
++	int n, a, b;
++{
++	unsigned int pos;
++
++	while (n--) {
++		pos = ((te->length+a)*(te->code+b))%HASHSIZE;
++		if (hash[pos] != 0) {
++			SetISTR(ISTR_WARNING,"LoadG3 internal error: addtohash fatal hash collision" );
++			return 0;
++		}
++		hash[pos] = te;
++		te++;
++	}
++	return 0;
++}
++
++static tableentry*
++hashfind(hash, length, code, a, b)
++    tableentry* hash[];
++    int length, code;
++    int a, b;
++    {
++    unsigned int pos;
++    tableentry* te;
++
++    pos = ((length+a)*(code+b))%HASHSIZE;
++    if (pos < 0 || pos >= HASHSIZE) {
++	SetISTR(ISTR_WARNING,
++	    "LoadG3 internal error: bad hash position, length %d code %d pos %d",
++	    length, code, pos );
++        return 0;
++        }
++    te = hash[pos];
++    return ((te && te->length == length && te->code == code) ? te : 0);
++    }
++
++static int
++getfaxrow( inf, row, bitrow )
++    FILE* inf;
++    int row;
++    byte* bitrow;
++{
++	int col;
++	byte* bP;
++	int curlen, curcode, nextbit;
++	int count, color;
++	tableentry* te;
++
++	for ( col = 0, bP = bitrow; col < MAXCOLS; ++col, ++bP )
++	    *bP = WHITE;
++	col = 0;
++	rawzeros = 0;
++	curlen = 0;
++	curcode = 0;
++	color = 1;
++	count = 0;
++	while (!endoffile) {
++		if (col >= MAXCOLS) {
++			skiptoeol(inf);
++			return (col); 
++		}
++		do {
++			if (rawzeros >= 11) {
++				nextbit = rawgetbit(inf);
++				if (nextbit) {
++					if (col == 0)
++						/* XXX should be 6 */
++						endoffile = (++eols == 3);
++					else
++						eols = 0;
++#ifdef notdef
++					if (col && col < 1728)
++						SetISTR(ISTR_WARNING,
++					       "LoadG3: warning, row %d short (len %d)",
++						    row, col );
++#endif /*notdef*/
++					return (col); 
++				}
++			} else
++				nextbit = rawgetbit(inf);
++			curcode = (curcode<<1) + nextbit;
++			curlen++;
++		} while (curcode <= 0);
++		if (curlen > 13) {
++			SetISTR(ISTR_WARNING,
++	  "bad code word at row %d, col %d (len %d code 0x%x), skipping to EOL",
++			    row, col, curlen, curcode, 0 );
++			skiptoeol(inf);
++			return (col);
++		}
++		if (color) {
++			if (curlen < 4)
++				continue;
++			te = hashfind(whash, curlen, curcode, WHASHA, WHASHB);
++		} else {
++			if (curlen < 2)
++				continue;
++			te = hashfind(bhash, curlen, curcode, BHASHA, BHASHB);
++		}
++		if (!te)
++			continue;
++		switch (te->tabid) {
++		case TWTABLE:
++		case TBTABLE:
++			count += te->count;
++			if (col+count > MAXCOLS) 
++				count = MAXCOLS-col;
++			if (count > 0) {
++				if (color) {
++					col += count;
++					count = 0;
++				} else {
++					for ( ; count > 0; --count, ++col )
++						bitrow[col] = BLACK;
++				}
++			}
++			curcode = 0;
++			curlen = 0;
++			color = !color;
++			break;
++		case MWTABLE:
++		case MBTABLE:
++			count += te->count;
++			curcode = 0;
++			curlen = 0;
++			break;
++		case EXTABLE:
++			count += te->count;
++			curcode = 0;
++			curlen = 0;
++			break;
++		default:
++			SetISTR(ISTR_WARNING, "internal bad poop" );
++			return (0);
++		}
++	}
++	return (0);
++}
++
++static void
++skiptoeol( file )
++    FILE* file;
++    {
++    while ( rawzeros < 11 )
++	(void) rawgetbit( file );
++    for ( ; ; )
++	{
++	if ( rawgetbit( file ) )
++	    break;
++	}
++    }
++
++static int shbit = 0;
++
++static int
++rawgetbit( file )
++    FILE* file;
++    {
++    int b;
++
++    if ( ( shbit & 0xff ) == 0 )
++	{
++	shdata = getc( file );
++	if ( shdata == EOF ) {
++	    char errmsg[64];
++	    sprintf(errmsg, "LoadG3: EOF / read error at line %d", eols);
++            FatalError(errmsg);
++	    return 0;
++	    }
++	shbit = reversebits ? 0x01 : 0x80;
++	}
++    if ( shdata & shbit )
++	{
++	rawzeros = 0;
++	b = 1;
++	}
++    else
++	{
++	rawzeros++;
++	b = 0;
++	}
++    if ( reversebits )
++	shbit <<= 1;
++    else
++	shbit >>= 1;
++    return b;
++    }
++#endif /* HAVE_G3 */
++
+diff --git a/xvg3.h b/xvg3.h
+new file mode 100644
+index 0000000..1109f1d
+--- /dev/null
++++ b/xvg3.h
+@@ -0,0 +1,232 @@
++/* g3.h - header file for group 3 FAX compression filters
++*/
++
++#ifndef _G3_H_
++#define _G3_H_
++
++typedef struct tableentry {
++    int tabid;
++    int code;
++    int length;
++    int count;
++    } tableentry;
++
++#define TWTABLE		23
++#define MWTABLE		24
++#define TBTABLE		25
++#define MBTABLE		26
++#define EXTABLE		27
++#define VRTABLE		28
++
++static struct tableentry twtable[] = {
++    { TWTABLE, 0x35, 8, 0 },
++    { TWTABLE, 0x7, 6, 1 },
++    { TWTABLE, 0x7, 4, 2 },
++    { TWTABLE, 0x8, 4, 3 },
++    { TWTABLE, 0xb, 4, 4 },
++    { TWTABLE, 0xc, 4, 5 },
++    { TWTABLE, 0xe, 4, 6 },
++    { TWTABLE, 0xf, 4, 7 },
++    { TWTABLE, 0x13, 5, 8 },
++    { TWTABLE, 0x14, 5, 9 },
++    { TWTABLE, 0x7, 5, 10 },
++    { TWTABLE, 0x8, 5, 11 },
++    { TWTABLE, 0x8, 6, 12 },
++    { TWTABLE, 0x3, 6, 13 },
++    { TWTABLE, 0x34, 6, 14 },
++    { TWTABLE, 0x35, 6, 15 },
++    { TWTABLE, 0x2a, 6, 16 },
++    { TWTABLE, 0x2b, 6, 17 },
++    { TWTABLE, 0x27, 7, 18 },
++    { TWTABLE, 0xc, 7, 19 },
++    { TWTABLE, 0x8, 7, 20 },
++    { TWTABLE, 0x17, 7, 21 },
++    { TWTABLE, 0x3, 7, 22 },
++    { TWTABLE, 0x4, 7, 23 },
++    { TWTABLE, 0x28, 7, 24 },
++    { TWTABLE, 0x2b, 7, 25 },
++    { TWTABLE, 0x13, 7, 26 },
++    { TWTABLE, 0x24, 7, 27 },
++    { TWTABLE, 0x18, 7, 28 },
++    { TWTABLE, 0x2, 8, 29 },
++    { TWTABLE, 0x3, 8, 30 },
++    { TWTABLE, 0x1a, 8, 31 },
++    { TWTABLE, 0x1b, 8, 32 },
++    { TWTABLE, 0x12, 8, 33 },
++    { TWTABLE, 0x13, 8, 34 },
++    { TWTABLE, 0x14, 8, 35 },
++    { TWTABLE, 0x15, 8, 36 },
++    { TWTABLE, 0x16, 8, 37 },
++    { TWTABLE, 0x17, 8, 38 },
++    { TWTABLE, 0x28, 8, 39 },
++    { TWTABLE, 0x29, 8, 40 },
++    { TWTABLE, 0x2a, 8, 41 },
++    { TWTABLE, 0x2b, 8, 42 },
++    { TWTABLE, 0x2c, 8, 43 },
++    { TWTABLE, 0x2d, 8, 44 },
++    { TWTABLE, 0x4, 8, 45 },
++    { TWTABLE, 0x5, 8, 46 },
++    { TWTABLE, 0xa, 8, 47 },
++    { TWTABLE, 0xb, 8, 48 },
++    { TWTABLE, 0x52, 8, 49 },
++    { TWTABLE, 0x53, 8, 50 },
++    { TWTABLE, 0x54, 8, 51 },
++    { TWTABLE, 0x55, 8, 52 },
++    { TWTABLE, 0x24, 8, 53 },
++    { TWTABLE, 0x25, 8, 54 },
++    { TWTABLE, 0x58, 8, 55 },
++    { TWTABLE, 0x59, 8, 56 },
++    { TWTABLE, 0x5a, 8, 57 },
++    { TWTABLE, 0x5b, 8, 58 },
++    { TWTABLE, 0x4a, 8, 59 },
++    { TWTABLE, 0x4b, 8, 60 },
++    { TWTABLE, 0x32, 8, 61 },
++    { TWTABLE, 0x33, 8, 62 },
++    { TWTABLE, 0x34, 8, 63 },
++    };
++
++static struct tableentry mwtable[] = {
++    { MWTABLE, 0x1b, 5, 64 },
++    { MWTABLE, 0x12, 5, 128 },
++    { MWTABLE, 0x17, 6, 192 },
++    { MWTABLE, 0x37, 7, 256 },
++    { MWTABLE, 0x36, 8, 320 },
++    { MWTABLE, 0x37, 8, 384 },
++    { MWTABLE, 0x64, 8, 448 },
++    { MWTABLE, 0x65, 8, 512 },
++    { MWTABLE, 0x68, 8, 576 },
++    { MWTABLE, 0x67, 8, 640 },
++    { MWTABLE, 0xcc, 9, 704 },
++    { MWTABLE, 0xcd, 9, 768 },
++    { MWTABLE, 0xd2, 9, 832 },
++    { MWTABLE, 0xd3, 9, 896 },
++    { MWTABLE, 0xd4, 9, 960 },
++    { MWTABLE, 0xd5, 9, 1024 },
++    { MWTABLE, 0xd6, 9, 1088 },
++    { MWTABLE, 0xd7, 9, 1152 },
++    { MWTABLE, 0xd8, 9, 1216 },
++    { MWTABLE, 0xd9, 9, 1280 },
++    { MWTABLE, 0xda, 9, 1344 },
++    { MWTABLE, 0xdb, 9, 1408 },
++    { MWTABLE, 0x98, 9, 1472 },
++    { MWTABLE, 0x99, 9, 1536 },
++    { MWTABLE, 0x9a, 9, 1600 },
++    { MWTABLE, 0x18, 6, 1664 },
++    { MWTABLE, 0x9b, 9, 1728 },
++    };
++
++static struct tableentry tbtable[] = {
++    { TBTABLE, 0x37, 10, 0 },
++    { TBTABLE, 0x2, 3, 1 },
++    { TBTABLE, 0x3, 2, 2 },
++    { TBTABLE, 0x2, 2, 3 },
++    { TBTABLE, 0x3, 3, 4 },
++    { TBTABLE, 0x3, 4, 5 },
++    { TBTABLE, 0x2, 4, 6 },
++    { TBTABLE, 0x3, 5, 7 },
++    { TBTABLE, 0x5, 6, 8 },
++    { TBTABLE, 0x4, 6, 9 },
++    { TBTABLE, 0x4, 7, 10 },
++    { TBTABLE, 0x5, 7, 11 },
++    { TBTABLE, 0x7, 7, 12 },
++    { TBTABLE, 0x4, 8, 13 },
++    { TBTABLE, 0x7, 8, 14 },
++    { TBTABLE, 0x18, 9, 15 },
++    { TBTABLE, 0x17, 10, 16 },
++    { TBTABLE, 0x18, 10, 17 },
++    { TBTABLE, 0x8, 10, 18 },
++    { TBTABLE, 0x67, 11, 19 },
++    { TBTABLE, 0x68, 11, 20 },
++    { TBTABLE, 0x6c, 11, 21 },
++    { TBTABLE, 0x37, 11, 22 },
++    { TBTABLE, 0x28, 11, 23 },
++    { TBTABLE, 0x17, 11, 24 },
++    { TBTABLE, 0x18, 11, 25 },
++    { TBTABLE, 0xca, 12, 26 },
++    { TBTABLE, 0xcb, 12, 27 },
++    { TBTABLE, 0xcc, 12, 28 },
++    { TBTABLE, 0xcd, 12, 29 },
++    { TBTABLE, 0x68, 12, 30 },
++    { TBTABLE, 0x69, 12, 31 },
++    { TBTABLE, 0x6a, 12, 32 },
++    { TBTABLE, 0x6b, 12, 33 },
++    { TBTABLE, 0xd2, 12, 34 },
++    { TBTABLE, 0xd3, 12, 35 },
++    { TBTABLE, 0xd4, 12, 36 },
++    { TBTABLE, 0xd5, 12, 37 },
++    { TBTABLE, 0xd6, 12, 38 },
++    { TBTABLE, 0xd7, 12, 39 },
++    { TBTABLE, 0x6c, 12, 40 },
++    { TBTABLE, 0x6d, 12, 41 },
++    { TBTABLE, 0xda, 12, 42 },
++    { TBTABLE, 0xdb, 12, 43 },
++    { TBTABLE, 0x54, 12, 44 },
++    { TBTABLE, 0x55, 12, 45 },
++    { TBTABLE, 0x56, 12, 46 },
++    { TBTABLE, 0x57, 12, 47 },
++    { TBTABLE, 0x64, 12, 48 },
++    { TBTABLE, 0x65, 12, 49 },
++    { TBTABLE, 0x52, 12, 50 },
++    { TBTABLE, 0x53, 12, 51 },
++    { TBTABLE, 0x24, 12, 52 },
++    { TBTABLE, 0x37, 12, 53 },
++    { TBTABLE, 0x38, 12, 54 },
++    { TBTABLE, 0x27, 12, 55 },
++    { TBTABLE, 0x28, 12, 56 },
++    { TBTABLE, 0x58, 12, 57 },
++    { TBTABLE, 0x59, 12, 58 },
++    { TBTABLE, 0x2b, 12, 59 },
++    { TBTABLE, 0x2c, 12, 60 },
++    { TBTABLE, 0x5a, 12, 61 },
++    { TBTABLE, 0x66, 12, 62 },
++    { TBTABLE, 0x67, 12, 63 },
++    };
++
++static struct tableentry mbtable[] = {
++    { MBTABLE, 0xf, 10, 64 },
++    { MBTABLE, 0xc8, 12, 128 },
++    { MBTABLE, 0xc9, 12, 192 },
++    { MBTABLE, 0x5b, 12, 256 },
++    { MBTABLE, 0x33, 12, 320 },
++    { MBTABLE, 0x34, 12, 384 },
++    { MBTABLE, 0x35, 12, 448 },
++    { MBTABLE, 0x6c, 13, 512 },
++    { MBTABLE, 0x6d, 13, 576 },
++    { MBTABLE, 0x4a, 13, 640 },
++    { MBTABLE, 0x4b, 13, 704 },
++    { MBTABLE, 0x4c, 13, 768 },
++    { MBTABLE, 0x4d, 13, 832 },
++    { MBTABLE, 0x72, 13, 896 },
++    { MBTABLE, 0x73, 13, 960 },
++    { MBTABLE, 0x74, 13, 1024 },
++    { MBTABLE, 0x75, 13, 1088 },
++    { MBTABLE, 0x76, 13, 1152 },
++    { MBTABLE, 0x77, 13, 1216 },
++    { MBTABLE, 0x52, 13, 1280 },
++    { MBTABLE, 0x53, 13, 1344 },
++    { MBTABLE, 0x54, 13, 1408 },
++    { MBTABLE, 0x55, 13, 1472 },
++    { MBTABLE, 0x5a, 13, 1536 },
++    { MBTABLE, 0x5b, 13, 1600 },
++    { MBTABLE, 0x64, 13, 1664 },
++    { MBTABLE, 0x65, 13, 1728 },
++    };
++
++static struct tableentry extable[] = {
++    { EXTABLE, 0x8, 11, 1792 },
++    { EXTABLE, 0xc, 11, 1856 },
++    { EXTABLE, 0xd, 11, 1920 },
++    { EXTABLE, 0x12, 12, 1984 },
++    { EXTABLE, 0x13, 12, 2048 },
++    { EXTABLE, 0x14, 12, 2112 },
++    { EXTABLE, 0x15, 12, 2176 },
++    { EXTABLE, 0x16, 12, 2240 },
++    { EXTABLE, 0x17, 12, 2304 },
++    { EXTABLE, 0x1c, 12, 2368 },
++    { EXTABLE, 0x1d, 12, 2432 },
++    { EXTABLE, 0x1e, 12, 2496 },
++    { EXTABLE, 0x1f, 12, 2560 },
++    };
++
++#endif /*_G3_H_*/
++
+-- 
+2.17.1
+

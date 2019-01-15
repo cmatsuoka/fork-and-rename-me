@@ -1,0 +1,28 @@
+From 13e2c35d2ea96acb2651fb5d4b0b9343b7d88ef6 Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Sat, 13 May 2017 17:49:01 -0700
+Subject: [PATCH 65/68] Avoid truncating warning messages. Some from libpng are
+ more than 80 characters long.
+
+This is from
+ftp://ftp.netbsd.org/pub/pkgsrc/current/pkgsrc/graphics/xv/patches/patch-ag
+---
+ xvinfo.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/xvinfo.c b/xvinfo.c
+index d4c7bac..301b4f6 100644
+--- a/xvinfo.c
++++ b/xvinfo.c
+@@ -26,7 +26,7 @@
+ #define INFOHIGH 270
+ 
+ /* max length of an Info String */
+-#define ISTRLEN 80
++#define ISTRLEN 256
+ 
+ /* baseline of top line of text */
+ #define TOPBASE (36 + penn_height/2 + 4 + 8 + ASCENT)
+-- 
+2.17.1
+

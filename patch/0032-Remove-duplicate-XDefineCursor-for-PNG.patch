@@ -1,0 +1,30 @@
+From 6f54969e7b308e559e004a96d31e90c89efc5b66 Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Tue, 25 Apr 2017 22:51:41 -0700
+Subject: [PATCH 32/68] Remove duplicate XDefineCursor() for PNG.
+
+This is from xv-20091215-werner-fink-multiple-fixes.patch.mime.  For
+xvmisc.c, Werner mentioned a duplicate XDestroyWindow() call for PNG.
+That one was taken care of earlier.
+---
+ xvmisc.c | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/xvmisc.c b/xvmisc.c
+index 013d70e..4a700e4 100644
+--- a/xvmisc.c
++++ b/xvmisc.c
+@@ -766,10 +766,6 @@ static void set_cursors(mainc, otherc)
+   if (pngW)  XDefineCursor(theDisp, pngW, otherc);
+ #endif
+ 
+-#ifdef HAVE_PNG
+-  if (pngW)  XDefineCursor(theDisp, pngW, otherc);
+-#endif
+-
+ #ifdef HAVE_PCD
+   if (pcdW)  XDefineCursor(theDisp, pcdW, otherc);
+ #endif
+-- 
+2.17.1
+

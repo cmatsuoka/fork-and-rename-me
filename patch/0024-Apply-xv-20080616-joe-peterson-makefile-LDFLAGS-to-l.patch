@@ -1,0 +1,42 @@
+From 94fda9967afbd4aae88642f127827eac66260a06 Mon Sep 17 00:00:00 2001
+From: David Griffith <dave@661.org>
+Date: Sun, 23 Apr 2017 07:41:14 -0700
+Subject: [PATCH 24/68] Apply
+ xv-20080616-joe-peterson-makefile-LDFLAGS-to-linker.msg.  See #4.
+
+---
+ Makefile | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index a196e3c..071d7d9 100644
+--- a/Makefile
++++ b/Makefile
+@@ -370,19 +370,19 @@ all: xv bggen vdcomp xcmap xvpictoppm
+ 
+ #xv: $(OBJS) $(JPEGLIB) $(TIFFLIB)
+ xv: $(OBJS)
+-	$(CC) -o xv $(CFLAGS) $(OBJS) $(LIBS)
++	$(CC) $(CFLAGS) $(LDFLAGS) -o xv $(OBJS) $(LIBS)
+ 
+ bggen: bggen.c
+-	$(CC) $(CFLAGS) -o bggen bggen.c $(LIBS)
++	$(CC) $(CFLAGS) $(LDFLAGS) -o bggen bggen.c $(LIBS)
+ 
+ vdcomp: vdcomp.c
+-	$(CC) $(CFLAGS) -o vdcomp vdcomp.c
++	$(CC) $(CFLAGS) $(LDFLAGS) -o vdcomp vdcomp.c
+ 
+ xcmap:  xcmap.c
+-	$(CC) $(CFLAGS) -o xcmap xcmap.c $(LIBS)
++	$(CC) $(CFLAGS) $(LDFLAGS) -o xcmap xcmap.c $(LIBS)
+ 
+ xvpictoppm:  xvpictoppm.c
+-	$(CC) $(CFLAGS) -o xvpictoppm xvpictoppm.c
++	$(CC) $(CFLAGS) $(LDFLAGS) -o xvpictoppm xvpictoppm.c
+ 
+ 
+ 
+-- 
+2.17.1
+
