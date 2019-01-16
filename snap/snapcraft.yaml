@@ -26,7 +26,7 @@ parts:
       patch -p0 < $SNAPCRAFT_STAGE/xv-libpng-1.5.patch
       # Gabriel Somlo's name size fix
       patch -p1 < $SNAPCRAFT_STAGE/xv-3.10a-namemax.patch
-      # Mark Brader's colormap cut fix 
+      # Mark Brader's colormap cut fix
       patch -p1 < $SNAPCRAFT_STAGE/xv-3.10a-xvcut.patch
       # Patches from GRR's collection and other sources curated by David Griffith
       for i in $SNAPCRAFT_STAGE/00*; do echo "Patch: $i"; patch -p1 < $i; done
@@ -96,6 +96,7 @@ apps:
     plugs:
       - home
       - x11
+      - desktop
   bggen:
     command: bin/bggen
     plugs:
