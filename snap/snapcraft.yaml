@@ -11,7 +11,7 @@ description: |
   Rasterfile, Targa, RLE, RGB, BMP, PCX, FITS, and PM formats on all known
   types of X displays.
 
-confinement: strict
+confinement: devmode
 
 parts:
   xv:

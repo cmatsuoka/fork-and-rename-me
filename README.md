@@ -44,8 +44,8 @@ upstream so [Project] can authoritatively publish future releases.
   - [x] Rename the forked Snapcrafters template repository
   - [ ] Update the description of the repository
   - [ ] Update logos and references to `[Project]` and `[my-snap-name]`
-  - [ ] Create a snap that runs in `devmode`
-  - [ ] Register the snap in the store, **using the preferred upstream name**
+  - [x] Create a snap that runs in `devmode`
+  - [x] Register the snap in the store, **using the preferred upstream name**
   - [ ] Add a screenshot to this `README.md`
   - [ ] Publish the `devmode` snap in the Snap store edge channel
   - [ ] Add install instructions to this `README.md`
@@ -70,13 +70,11 @@ upstream so [Project] can authoritatively publish future releases.
 
 If you have any questions, [post in the Snapcraft forum](https://forum.snapcraft.io).
 
-<!--
 ## The Snapcrafters
 
-| [![Your Name](https://gravatar.com/avatar/bc0bced65e963eb5c3a16cab8b004431/?s=128)](https://github.com/yourname/) |
+| [![Claudio Matsuoka](https://gravatar.com/avatar/9ea01f3c9df2aa06a5bf4930bf27af63/?s=128)](https://github.com/cmatsuoka/) |
 | :---: |
-| [Your Name](https://github.com/yourname/) |
---> 
+| [Claudio Matsuoka](https://github.com/cmatsuoka/) |
 
 <!-- Uncomment and modify this when you have upstream contacts
 ## Upstream
