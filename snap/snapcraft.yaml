@@ -7,9 +7,9 @@ summary: The classic image manipulation program
 description: |
   The ubiquitous and time-honored XV is the industry-leading program for
   fast, no-nonsense image display in the X Window System. It can operate on
-  images in the JPEG, PNG, GIF, TIFF, PBM, PGM, PPM, XPM, X11 bitmap, Sun
-  Rasterfile, Targa, RLE, RGB, BMP, PCX, FITS, and PM formats on all known
-  types of X displays.
+  many image formats including JPEG, PNG, GIF, WebP, TIFF, PBM, PGM, PPM,
+  XPM, X11 bitmap, Sun Rasterfile, Targa, BPM, RGB, BMP, PCX, FITS, and PM,
+  on all known types of X displays.
 
 confinement: devmode
 
