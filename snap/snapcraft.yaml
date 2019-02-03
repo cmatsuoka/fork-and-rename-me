@@ -1,8 +1,7 @@
 name: xv
 base: core18
-icon: xv.png
 grade: devel
-version: '3.10a+grr20081216+dg20170513'
+version: '3.10a+20081216-cm1'
 summary: The classic image manipulation program
 description: |
   The ubiquitous and time-honored XV is the industry-leading program for
@@ -11,7 +10,7 @@ description: |
   XPM, X11 bitmap, Sun Rasterfile, Targa, BPM, RGB, BMP, PCX, FITS, and PM,
   on all known types of X displays.
 
-confinement: devmode
+confinement: strict
 
 parts:
   xv:
@@ -75,7 +74,7 @@ parts:
     source: patch/
     plugin: dump
     prime:
-      - xv.desktop
+      - -*
 
   jasper:
     source: https://github.com/mdadams/jasper
@@ -92,7 +91,6 @@ parts:
 apps:
   xv:
     command: bin/xv
-    desktop: xv.desktop
     plugs:
       - home
       - x11

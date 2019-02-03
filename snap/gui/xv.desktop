@@ -2,7 +2,7 @@
 Name=XV Image Viewer
 Comment=An interactive image manipulation program
 Exec=xv
-Icon=/meta/gui/icon.png
+Icon=${SNAP}/meta/gui/icon.png
 Type=Application
 Categories=Graphics;RasterGraphics;Viewer;
 MimeType=image/gif;image/jpeg;image/tiff;image/postscript;image/x-portable-bitmap;image/x-portable-graymap;image/x-portable-pixmap;image/x-xbitmap;image/x-xpixmap;image/x-ms-bmp;image/cmu-raster;image/x-rgb;image/targa;image/fits;image/png;image/pm;image/webp;image/jp2;image/jpx;image/jpm;image/g3fax
