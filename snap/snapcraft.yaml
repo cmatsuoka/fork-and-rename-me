@@ -1,15 +1,72 @@
-name: my-snap-name # you probably want to 'snapcraft register <name>'
-version: '0.1' # just for humans, typically '1.2+git' or '1.3.2'
-summary: Single-line elevator pitch for your amazing snap # 79 char long summary
+name: xv
+base: core18
+grade: devel
+version: '3.10a+dg20180618'
+summary: The classic image manipulation program
 description: |
-  This is my-snap's description. You have a paragraph or two to tell the
-  most important story about your snap. Keep it under 100 words though,
-  we live in tweetspace and your description wants to look good in the snap
-  store.
+  The ubiquitous and time-honored XV is the industry-leading program for
+  fast, no-nonsense image display in the X Window System. It can operate on
+  many image formats including JPEG, PNG, GIF, WebP, TIFF, PBM, PGM, PPM,
+  XPM, X11 bitmap, Sun Rasterfile, Targa, BPM, RGB, BMP, PCX, FITS, and PM,
+  on all known types of X displays.
 
-confinement: devmode # use 'strict' once you have the right plugs and slots
+  This package is built from the xv 3.10a sources, patched with Greg Roelof's
+  jumbo patches and enhancements and David Griffith's patch collection.
+
+confinement: devmode
 
 parts:
-  my-part:
-    # See 'snapcraft plugins'
-    plugin: nil
+  xv:
+    source: https://gitlab.com/DavidGriffith/xv.git
+    plugin: make
+    override-build: |
+      make CCOPTS=-O3 PREFIX=
+      make install DESTDIR=$SNAPCRAFT_PART_INSTALL PREFIX=
+    build-packages:
+      - gcc
+      - make
+      - libx11-dev
+      - libxt-dev
+      - libxrandr-dev
+      - libjpeg-turbo8-dev
+      - libtiff-dev
+      - libpng-dev
+      - libwebp-dev
+      - zlib1g-dev
+    stage-packages:
+      - libx11-6
+      - libxt6
+      - libsm6
+      - libice6
+      - libxrandr2
+      - libjpeg-turbo8
+      - libtiff5
+      - libpng16-16
+      - libwebp6
+      - libjbig0
+
+apps:
+  xv:
+    command: bin/xv
+    plugs:
+      - home
+      - x11
+      - desktop
+  bggen:
+    command: bin/bggen
+    plugs:
+      - home
+      - x11
+  vdcomp:
+    command: bin/vdcomp
+    plugs:
+      - home
+  xcmap:
+    command: bin/xcmap
+    plugs:
+      - home
+      - x11
+  xvpictoppm:
+    command: bin/xvpictoppm
+    plugs:
+      - home
